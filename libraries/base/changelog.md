@@ -26,6 +26,11 @@
     which provides a mechanism for custom type errors that reports the errors in
     a more predictable behaviour than `TypeError`.
   * Make `(&)` representation polymorphic in the return type ([CLC proposal #158](https://github.com/haskell/core-libraries-committee/issues/158))
+  * Exceptions can now be decorated with user-defined annotations via `ExceptionContext`.
+  * Exceptions now capture backtrace information via their `ExceptionContext`. GHC
+    supports several mechanisms by which backtraces can be collected which can be
+    individually enabled and disabled via
+    `GHC.Exception.Backtrace.setEnabledBacktraceMechanisms`.
 
 ## 4.18.0.0 *March 2023*
   * Shipped with GHC 9.6.1
@@ -106,8 +111,6 @@
     [CLC proposal #36](https://github.com/haskell/core-libraries-committee/issues/36).
 
 ## 4.17.0.0 *August 2022*
-
-  * Shipped with GHC 9.4.1
 
   * Add explicitly bidirectional `pattern TypeRep` to `Type.Reflection`.
 
