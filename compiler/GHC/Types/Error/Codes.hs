@@ -270,6 +270,7 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "PsErrInvalidCApiImport"                        = 72744
   GhcDiagnosticCode "PsErrMultipleConForNewtype"                    = 05380
   GhcDiagnosticCode "PsErrUnicodeCharLooksLike"                     = 31623
+  GhcDiagnosticCode "PsErrIllegalOrPat"                             = 29847
 
   -- Driver diagnostic codes
   GhcDiagnosticCode "DriverMissingHomeModules"                      = 32850
@@ -472,6 +473,8 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "TcRnDifferentExportWarnings"                   = 92878
   GhcDiagnosticCode "TcRnIncompleteExportWarnings"                  = 94721
   GhcDiagnosticCode "TcRnIllegalTypeOperatorDecl"                   = 50649
+  GhcDiagnosticCode "TcRnOrPatBindsVariables"                       = 81303
+  GhcDiagnosticCode "TcRnOrPatHasVisibleTyApps"                     = 28418
   GhcDiagnosticCode "TcRnIllegalKind"                               = 64861
   GhcDiagnosticCode "TcRnUnexpectedPatSigType"                      = 74097
   GhcDiagnosticCode "TcRnIllegalKindSignature"                      = 91382
