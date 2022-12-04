@@ -10,8 +10,8 @@
      { T17544_kw.hs:1:1 }
      (UnchangedAnchor))
     (AnnsModule
-     [(AddEpAnn AnnModule (EpaSpan { T17544_kw.hs:11:1-6 }))
-     ,(AddEpAnn AnnWhere (EpaSpan { T17544_kw.hs:13:13-17 }))]
+     [(AddEpAnn AnnModule (EpaSpan { T17544_kw.hs:8:1-6 }))
+     ,(AddEpAnn AnnWhere (EpaSpan { T17544_kw.hs:13:12-16 }))]
      []
      (Just
       ((,)
@@ -23,33 +23,115 @@
    (VirtualBraces
     (1))
    (Nothing)
-   (Just
-    (L
-     { T17544_kw.hs:12:3-33 }
-     (WithHsDocIdentifiers
-      (MultiLineDocString
-       (HsDocStringNext)
-       (:|
-        (L
-         { T17544_kw.hs:12:7-33 }
-         (HsDocStringChunk
-          " Bad comment for the module"))
-        []))
-      []))))
+   (Nothing))
   (HsModTk
    (L
     (TokenLoc
-     (EpaSpan { T17544_kw.hs:11:1-6 }))
+     (EpaSpan { T17544_kw.hs:8:1-6 }))
     (HsTok))
    (L
     (TokenLoc
-     (EpaSpan { T17544_kw.hs:13:13-17 }))
+     (EpaSpan { T17544_kw.hs:13:12-16 }))
     (HsTok)))
   (Just
    (L
-    (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:13:3-11 })
+    (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:10:3-11 })
     {ModuleName: T17544_kw}))
-  (Nothing)
+  (Just
+   (L
+    (SrcSpanAnn (EpAnn
+                 (Anchor
+                  { T17544_kw.hs:(10,13)-(13,10) }
+                  (UnchangedAnchor))
+                 (AnnList
+                  (Nothing)
+                  (Just
+                   (AddEpAnn AnnOpenP (EpaSpan { T17544_kw.hs:10:13 })))
+                  (Just
+                   (AddEpAnn AnnCloseP (EpaSpan { T17544_kw.hs:13:10 })))
+                  []
+                  [])
+                 (EpaComments
+                  [])) { T17544_kw.hs:(10,13)-(13,10) })
+    [(L
+      (SrcSpanAnn (EpAnn
+                   (Anchor
+                    { T17544_kw.hs:11:3-9 }
+                    (UnchangedAnchor))
+                   (AnnListItem
+                    [(AddCommaAnn
+                      (EpaSpan { T17544_kw.hs:11:10 }))])
+                   (EpaComments
+                    [])) { T17544_kw.hs:11:3-9 })
+      (IEThingAll
+       (EpAnn
+        (Anchor
+         { T17544_kw.hs:11:3-5 }
+         (UnchangedAnchor))
+        [(AddEpAnn AnnDotdot (EpaSpan { T17544_kw.hs:11:7-8 }))
+        ,(AddEpAnn AnnOpenP (EpaSpan { T17544_kw.hs:11:6 }))
+        ,(AddEpAnn AnnCloseP (EpaSpan { T17544_kw.hs:11:9 }))
+        ,(AddEpAnn AnnDotdot (EpaSpan { T17544_kw.hs:11:7-8 }))]
+        (EpaComments
+         []))
+       (L
+        (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:11:3-5 })
+        (IEName
+         (NoExtField)
+         (L
+          (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:11:3-5 })
+          (Unqual
+           {OccName: Foo}))))))
+    ,(L
+      (SrcSpanAnn (EpAnn
+                   (Anchor
+                    { T17544_kw.hs:12:3-9 }
+                    (UnchangedAnchor))
+                   (AnnListItem
+                    [(AddCommaAnn
+                      (EpaSpan { T17544_kw.hs:12:10 }))])
+                   (EpaComments
+                    [])) { T17544_kw.hs:12:3-9 })
+      (IEThingAll
+       (EpAnn
+        (Anchor
+         { T17544_kw.hs:12:3-5 }
+         (UnchangedAnchor))
+        [(AddEpAnn AnnDotdot (EpaSpan { T17544_kw.hs:12:7-8 }))
+        ,(AddEpAnn AnnOpenP (EpaSpan { T17544_kw.hs:12:6 }))
+        ,(AddEpAnn AnnCloseP (EpaSpan { T17544_kw.hs:12:9 }))
+        ,(AddEpAnn AnnDotdot (EpaSpan { T17544_kw.hs:12:7-8 }))]
+        (EpaComments
+         []))
+       (L
+        (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:12:3-5 })
+        (IEName
+         (NoExtField)
+         (L
+          (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:12:3-5 })
+          (Unqual
+           {OccName: Bar}))))))
+    ,(L
+      (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:13:3-9 })
+      (IEThingAll
+       (EpAnn
+        (Anchor
+         { T17544_kw.hs:13:3-5 }
+         (UnchangedAnchor))
+        [(AddEpAnn AnnDotdot (EpaSpan { T17544_kw.hs:13:7-8 }))
+        ,(AddEpAnn AnnOpenP (EpaSpan { T17544_kw.hs:13:6 }))
+        ,(AddEpAnn AnnCloseP (EpaSpan { T17544_kw.hs:13:9 }))
+        ,(AddEpAnn AnnDotdot (EpaSpan { T17544_kw.hs:13:7-8 }))]
+        (EpaComments
+         []))
+       (L
+        (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:13:3-5 })
+        (IEName
+         (NoExtField)
+         (L
+          (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:13:3-5 })
+          (Unqual
+           {OccName: Cls}))))))]))
   []
   [(L
     (SrcSpanAnn (EpAnn
@@ -138,19 +220,7 @@
               (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:16:18-20 })
               (Unqual
                {OccName: Foo}))))
-           (Just
-            (L
-             { T17544_kw.hs:15:10-35 }
-             (WithHsDocIdentifiers
-              (MultiLineDocString
-               (HsDocStringNext)
-               (:|
-                (L
-                 { T17544_kw.hs:15:14-35 }
-                 (HsDocStringChunk
-                  " Bad comment for MkFoo"))
-                []))
-              [])))))])
+           (Nothing)))])
        []))))
   ,(L
     (SrcSpanAnn (EpAnn
@@ -265,19 +335,7 @@
              (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:19:24-26 })
              (Unqual
               {OccName: Bar}))))
-          (Just
-           (L
-            { T17544_kw.hs:18:13-38 }
-            (WithHsDocIdentifiers
-             (MultiLineDocString
-              (HsDocStringNext)
-              (:|
-               (L
-                { T17544_kw.hs:18:17-38 }
-                (HsDocStringChunk
-                 " Bad comment for MkBar"))
-               []))
-             []))))))
+          (Nothing))))
        []))))
   ,(L
     (SrcSpanAnn (EpAnn
@@ -378,20 +436,18 @@
        []}
       []
       []
-      [(L
-        (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:22:5-34 })
-        (DocCommentNext
-         (L
-          { T17544_kw.hs:22:5-34 }
-          (WithHsDocIdentifiers
-           (MultiLineDocString
-            (HsDocStringNext)
-            (:|
-             (L
-              { T17544_kw.hs:22:9-34 }
-              (HsDocStringChunk
-               " Bad comment for clsmethod"))
-             []))
-           []))))])))]))
+      [])))]))
 
 
+
+T17544_kw.hs:9:3: warning: [GHC-94458] [-Winvalid-haddock]
+    A Haddock comment cannot appear in this position and will be ignored.
+
+T17544_kw.hs:15:10: warning: [GHC-94458] [-Winvalid-haddock]
+    A Haddock comment cannot appear in this position and will be ignored.
+
+T17544_kw.hs:18:13: warning: [GHC-94458] [-Winvalid-haddock]
+    A Haddock comment cannot appear in this position and will be ignored.
+
+T17544_kw.hs:22:5: warning: [GHC-94458] [-Winvalid-haddock]
+    A Haddock comment cannot appear in this position and will be ignored.

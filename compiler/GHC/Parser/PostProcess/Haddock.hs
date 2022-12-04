@@ -62,7 +62,6 @@ import Data.Traversable
 import Data.Maybe
 import Data.List.NonEmpty (nonEmpty)
 import qualified Data.List.NonEmpty as NE
-import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Writer
@@ -249,15 +248,17 @@ instance HasHaddock (Located (HsModule GhcPs)) where
     --    module M where
     --
     -- Only do this when the module header exists.
-    headerDocs <-
-      for @Maybe (hsmodName mod) $ \(L l_name _) ->
-      extendHdkA (locA l_name) $ liftHdkA $ do
-        -- todo: register keyword location of 'module', see Note [Register keyword location]
-        docs <-
-          inLocRange (locRangeTo (getBufPos (srcSpanStart (locA l_name)))) $
-          takeHdkComments mkDocNext
-        dc <- selectDocString docs
-        pure $ lexLHsDocString <$> dc
+    headerDocs <- case modToks of
+      HsNoModTk -> pure Nothing
+      _ ->
+        liftHdkA $ do
+          docs <-
+            inLocRange (locRangeTo (getBufPos (srcSpanStart modSigTokenLocation))) $
+            takeHdkComments mkDocNext
+          dc <- selectDocString docs
+          pure $ lexLHsDocString <$> dc
+
+    traverse_ @Maybe registerHdkA (hsmodName mod)
 
     -- Step 2, process documentation comments in the export list:
     --
@@ -272,6 +273,7 @@ instance HasHaddock (Located (HsModule GhcPs)) where
     --
     -- Only do this when the export list exists.
     hsmodExports' <- traverse @Maybe addHaddock (hsmodExports mod)
+    traverse_ @Strict.Maybe registerTokenHdkA whereTk
 
     -- Step 3, register the import section to reject invalid comments:
     --
@@ -295,7 +297,19 @@ instance HasHaddock (Located (HsModule GhcPs)) where
     pure $ L l_mod $
       mod { hsmodExports = hsmodExports'
           , hsmodDecls = hsmodDecls'
-          , hsmodExt = (hsmodExt mod) { hsmodHaddockModHeader = join @Maybe headerDocs } }
+          , hsmodExt = (hsmodExt mod) { hsmodHaddockModHeader = headerDocs } }
+    where
+      modToks = hsmodHeaderTokens mod
+
+      modSigTokenLocation = case modToks of
+        HsNoModTk        -> noSrcSpan
+        HsSigTk sigTok _ -> getTokenSrcSpan $ getLoc sigTok
+        HsModTk modTok _ -> getTokenSrcSpan $ getLoc modTok
+
+      whereTk = case modToks of
+        HsNoModTk -> Strict.Nothing
+        HsSigTk _ tok -> Strict.Just tok
+        HsModTk _ tok -> Strict.Just tok
 
 lexHsDocString :: HsDocString -> HsDoc GhcPs
 lexHsDocString = lexHsDoc parseIdentifier
@@ -313,7 +327,6 @@ instance HasHaddock (LocatedL [LocatedA (IE GhcPs)]) where
   addHaddock (L l_exports exports) =
     extendHdkA (locA l_exports) $ do
       exports' <- addHaddockInterleaveItems NoLayoutInfo mkDocIE exports
-      registerLocHdkA (srcLocSpan (srcSpanEnd (locA l_exports))) -- Do not consume comments after the closing parenthesis
       pure $ L l_exports exports'
 
 -- Needed to use 'addHaddockInterleaveItems' in 'instance HasHaddock (Located [LIE GhcPs])'.
@@ -481,13 +494,18 @@ instance HasHaddock (HsDecl GhcPs) where
   addHaddock (TyClD x decl)
     | DataDecl { tcdDExt, tcdTkNewOrData, tcdLName, tcdTyVars, tcdTkWhere, tcdFixity, tcdDataDefn = defn } <- decl
     = do
+        registerNewOrDataTokHdkA tcdTkNewOrData
         registerHdkA tcdLName
+        traverse_ @Strict.Maybe registerTokenHdkA tcdTkWhere
         defn' <- addHaddock defn
         pure $
           TyClD x (DataDecl {
             tcdDExt, tcdTkNewOrData,
             tcdLName, tcdTyVars, tcdTkWhere, tcdFixity,
             tcdDataDefn = defn' })
+    where
+      registerNewOrDataTokHdkA (NewTypeToken tok) = registerTokenHdkA tok
+      registerNewOrDataTokHdkA (DataTypeToken tok) = registerTokenHdkA tok
 
   -- Class declarations:
   --
@@ -502,8 +520,9 @@ instance HasHaddock (HsDecl GhcPs) where
                   tcdCtxt, tcdLName, tcdTyVars, tcdFixity, tcdFDs,
                   tcdTkWhere, tcdSigs, tcdMeths, tcdATs, tcdATDefs } <- decl
     = do
+        registerTokenHdkA tcdTkClass
         registerHdkA tcdLName
-        -- todo: register keyword location of 'where', see Note [Register keyword location]
+        traverse_ @Strict.Maybe registerTokenHdkA tcdTkWhere
         where_cls' <-
           addHaddockInterleaveItems tcdLayout (mkDocHsDecl tcdLayout) $
           flattenBindsAndSigs (tcdMeths, tcdSigs, tcdATs, tcdATDefs, [], [])
@@ -1157,6 +1176,13 @@ registerLocHdkA l = HdkA (getBufSpan l) (pure ())
 -- See Note [Adding Haddock comments to the syntax tree].
 registerHdkA :: GenLocated (SrcSpanAnn' a) e -> HdkA ()
 registerHdkA a = registerLocHdkA (getLocA a)
+
+-- Let the neighbours know about a token at this location.
+-- Similar to registerLocHdkA and registerHdkA.
+--
+-- See Note [Adding Haddock comments to the syntax tree].
+registerTokenHdkA :: LHsToken tok GhcPs -> HdkA ()
+registerTokenHdkA (L l _) = HdkA (getTokenBufSpan l) (pure ())
 
 -- Modify the action of a HdkA computation.
 hoistHdkA :: (HdkM a -> HdkM b) -> HdkA a -> HdkA b
