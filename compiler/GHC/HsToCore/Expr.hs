@@ -289,6 +289,7 @@ dsExpr (HsOverLit _ lit)
 dsExpr e@(XExpr ext_expr_tc)
   = case ext_expr_tc of
       ExpansionExpr (HsExpanded _ b) -> dsExpr b
+      ExpansionStmt (HsExpanded (L loc _) b) -> putSrcSpanDsA loc $ dsExpr b
       WrapExpr {}                    -> dsHsWrapped e
       ConLikeTc con tvs tys          -> dsConLike con tvs tys
       -- Hpc Support
@@ -347,6 +348,7 @@ dsExpr e@(HsApp _ fun arg)
                    ; addMessagesDs msgs'
                    ; pmcRecSel fun_id arg' }
            _ -> addMessagesDs msgs
+       ; warnUnusedBindValue fun arg (exprType arg')
        ; return $ mkCoreAppDs (text "HsApp" <+> ppr e) fun' arg' }
   where
     is_incomplete_rec_sel_msg :: MsgEnvelope DsMessage -> Bool
@@ -805,7 +807,7 @@ dsDo ctx stmts
         later_pats   = rec_tup_pats
         rets         = map noLocA rec_rets
         mfix_app     = nlHsSyntaxApps mfix_op [mfix_arg]
-        match_group  = MatchGroupTc [unrestricted tup_ty] body_ty (Generated SkipPmc)
+        match_group  = MatchGroupTc [unrestricted tup_ty] body_ty (Generated OtherExpansion SkipPmc)
         mfix_arg     = noLocA $ HsLam noExtField
                            (MG { mg_alts = noLocA [mkSimpleMatch
                                                     LambdaExpr
@@ -919,6 +921,28 @@ dsConLike con tvs tys
 *                                                                      *
 ************************************************************************
 -}
+
+-- Warn about certain types of values discarded in monadic bindings (#3263)
+warnUnusedBindValue :: LHsExpr GhcTc -> LHsExpr GhcTc -> Type -> DsM ()
+warnUnusedBindValue fun arg@(L loc _) arg_ty
+  | Just (l, f) <- fish_var fun
+  , f `hasKey` thenMClassOpKey    -- it is a (>>)
+  = when (isGeneratedSrcSpan l) $ -- it is compiler generated (>>)
+         putSrcSpanDs (locA loc) $ warnDiscardedDoBindings arg arg_ty
+  where
+    -- Retrieve the location info and the head of the application
+    -- It is important that we /do not/ look through HsApp to avoid
+    -- generating duplicate warnings
+    fish_var :: LHsExpr GhcTc -> Maybe (SrcSpan , Id)
+    fish_var (L l (HsVar _ id)) = return (locA l, unLoc id)
+    fish_var (L _ (HsAppType _ e _ _)) = fish_var e
+    fish_var (L l (XExpr (WrapExpr (HsWrap _ e)))) = do (l, e') <- fish_var (L l e)
+                                                        return (l, e')
+    fish_var (L l (XExpr (ExpansionExpr (HsExpanded _ e)))) = fish_var (L l e)
+    fish_var (L l (XExpr (ExpansionStmt (HsExpanded _ e)))) = fish_var (L l e)
+    fish_var _ = Nothing
+
+warnUnusedBindValue _ _ _  = return ()
 
 -- Warn about certain types of values discarded in monadic bindings (#3263)
 warnDiscardedDoBindings :: LHsExpr GhcTc -> Type -> DsM ()

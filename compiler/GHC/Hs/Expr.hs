@@ -447,17 +447,83 @@ tupArgPresent (Missing {}) = False
 ********************************************************************* -}
 
 type instance XXExpr GhcPs = DataConCantHappen
-type instance XXExpr GhcRn = HsExpansion (HsExpr GhcRn) (HsExpr GhcRn)
+type instance XXExpr GhcRn = XXExprGhcRn
 type instance XXExpr GhcTc = XXExprGhcTc
 -- HsExpansion: see Note [Rebindable syntax and HsExpansion] below
 
+
+
+{- *********************************************************************
+*                                                                      *
+              Generating code for HsExpanded
+      See Note [Handling overloaded and rebindable constructs]
+*                                                                      *
+********************************************************************* -}
+
+data XXExprGhcRn
+  = ExpandedExpr
+    {-# UNPACK #-} !(HsExpansion (HsExpr GhcRn)    -- Original source expression
+                                 (HsExpr GhcRn))   -- Expanded expression
+  | ExpandedStmt
+    {-# UNPACK #-} !(HsExpansion (ExprLStmt GhcRn) -- Original source do statement with location
+                                 (HsExpr GhcRn))   -- Expanded expression
+                                                   -- See Note [Expanding HsDo with HsExpansion]
+
+  | PopErrCtxt                                     -- A hint for typechecker to pop
+    {-# UNPACK #-} !(LHsExpr GhcRn)                -- the top of the error context stack
+                                                   -- Does not presist post type checking phase
+                                                   -- See Note [Expanding HsDo with HsExpansion]
+
+
+-- | Wrap a located expression with a PopSrcExpr
+mkPopErrCtxtExpr :: LHsExpr GhcRn -> HsExpr GhcRn
+mkPopErrCtxtExpr a = XExpr (PopErrCtxt a)
+
+-- | Wrap a located expression with a PopSrcExpr with an appropriate location
+mkPopErrCtxtExprAt :: SrcSpanAnnA ->  LHsExpr GhcRn -> LHsExpr GhcRn
+mkPopErrCtxtExprAt loc a = L loc $ mkPopErrCtxtExpr a
+
+-- | Build a 'HsExpansion' out of an extension constructor,
+--   and the two components of the expansion: original and
+--   desugared expressions.
+mkExpandedExpr
+  :: HsExpr GhcRn         -- ^ source expression
+  -> HsExpr GhcRn         -- ^ expanded expression
+  -> HsExpr GhcRn         -- ^ suitably wrapped 'HsExpansion'
+mkExpandedExpr a b = XExpr (ExpandedExpr (HsExpanded a b))
+
+mkExpandedStmt
+  :: ExprLStmt GhcRn      -- ^ source statement
+  -> HsExpr GhcRn         -- ^ expanded expression
+  -> HsExpr GhcRn         -- ^ suitably wrapped 'HsExpansion'
+mkExpandedStmt a b = XExpr (ExpandedStmt (HsExpanded a b))
+
+
+mkExpandedStmtAt
+  :: SrcSpanAnnA          -- ^ Location for the expansion expression
+  -> ExprLStmt GhcRn      -- ^ source statement
+  -> HsExpr GhcRn         -- ^ expanded expression
+  -> LHsExpr GhcRn        -- ^ suitably wrapped located 'HsExpansion'
+mkExpandedStmtAt loc a b = L loc $ mkExpandedStmt a b
+
+mkExpandedStmtPopAt
+  :: SrcSpanAnnA          -- ^ Location for the expansion statement
+  -> ExprLStmt GhcRn      -- ^ source statement
+  -> HsExpr GhcRn         -- ^ expanded expression
+  -> LHsExpr GhcRn        -- ^ suitably wrapped 'HsExpansion'
+mkExpandedStmtPopAt loc stmt expansion = mkPopErrCtxtExprAt loc $ mkExpandedStmtAt loc stmt expansion
 
 data XXExprGhcTc
   = WrapExpr        -- Type and evidence application and abstractions
       {-# UNPACK #-} !(HsWrap HsExpr)
 
   | ExpansionExpr   -- See Note [Rebindable syntax and HsExpansion] below
-      {-# UNPACK #-} !(HsExpansion (HsExpr GhcRn) (HsExpr GhcTc))
+      {-# UNPACK #-} !(HsExpansion (HsExpr GhcRn)    --  Original source expression
+                                   (HsExpr GhcTc))   --  Expanded expression typechecked
+
+  | ExpansionStmt   -- See Note [Expanding HsDo with HsExpansion] below
+      {-# UNPACK #-} !(HsExpansion (ExprLStmt GhcRn) -- Original source do statement with location
+                                   (HsExpr GhcTc))   -- Expanded expression typechecked
 
   | ConLikeTc      -- Result of typechecking a data-con
                    -- See Note [Typechecking data constructors] in
@@ -477,6 +543,27 @@ data XXExprGhcTc
      Int                                -- module-local tick number for True
      Int                                -- module-local tick number for False
      (LHsExpr GhcTc)                    -- sub-expression
+
+
+
+-- | Build a 'HsExpansion' out of an extension constructor,
+--   and the two components of the expansion: original and
+--   expanded typechecked expressions.
+mkExpandedExprTc
+  :: HsExpr GhcRn           -- ^ source expression
+  -> HsExpr GhcTc           -- ^ expanded typechecked expression
+  -> HsExpr GhcTc           -- ^ suitably wrapped 'HsExpansion'
+mkExpandedExprTc a b = XExpr (ExpansionExpr (HsExpanded a b))
+
+-- | Build a 'HsExpansion' out of an extension constructor.
+--   The two components of the expansion are: original statement and
+--   expanded typechecked expression.
+mkExpandedStmtTc
+  :: ExprLStmt GhcRn           -- ^ source expression
+  -> HsExpr GhcTc           -- ^ expanded typechecked expression
+  -> HsExpr GhcTc           -- ^ suitably wrapped 'HsExpansion'
+mkExpandedStmtTc a b = XExpr (ExpansionStmt (HsExpanded a b))
+
 
 
 {- *********************************************************************
@@ -718,12 +805,22 @@ ppr_expr (XExpr x) = case ghcPass @p of
   GhcRn -> ppr x
   GhcTc -> ppr x
 
+instance Outputable XXExprGhcRn where
+  ppr (ExpandedExpr ex) = whenPprDebug (text "[ExpandedExpr]") <+> ppr ex
+  ppr (ExpandedStmt ex) = whenPprDebug (text "[ExpandedStmt]") <+> ppr ex
+  ppr (PopErrCtxt e)    = whenPprDebug (text "<PopErrCtxt>")   <+> parens (ppr e)
+
 instance Outputable XXExprGhcTc where
   ppr (WrapExpr (HsWrap co_fn e))
     = pprHsWrapper co_fn (\_parens -> pprExpr e)
 
   ppr (ExpansionExpr e)
     = ppr e -- e is an HsExpansion, we print the original
+            -- expression (LHsExpr GhcPs), not the
+            -- desugared one (LHsExpr GhcTc).
+
+  ppr (ExpansionStmt stmt)
+    = ppr stmt -- e is an HsExpansion, we print the original
             -- expression (LHsExpr GhcPs), not the
             -- desugared one (LHsExpr GhcTc).
 
@@ -756,12 +853,15 @@ ppr_infix_expr (XExpr x)            = case ghcPass @p of
                                         GhcTc -> ppr_infix_expr_tc x
 ppr_infix_expr _ = Nothing
 
-ppr_infix_expr_rn :: HsExpansion (HsExpr GhcRn) (HsExpr GhcRn) -> Maybe SDoc
-ppr_infix_expr_rn (HsExpanded a _) = ppr_infix_expr a
+ppr_infix_expr_rn :: XXExprGhcRn -> Maybe SDoc
+ppr_infix_expr_rn (ExpandedExpr (HsExpanded a _)) = ppr_infix_expr a
+ppr_infix_expr_rn (ExpandedStmt _) = Nothing
+ppr_infix_expr_rn (PopErrCtxt (L _ a)) = ppr_infix_expr a
 
 ppr_infix_expr_tc :: XXExprGhcTc -> Maybe SDoc
 ppr_infix_expr_tc (WrapExpr (HsWrap _ e))          = ppr_infix_expr e
 ppr_infix_expr_tc (ExpansionExpr (HsExpanded a _)) = ppr_infix_expr a
+ppr_infix_expr_tc (ExpansionStmt {})               = Nothing
 ppr_infix_expr_tc (ConLikeTc {})                   = Nothing
 ppr_infix_expr_tc (HsTick {})                      = Nothing
 ppr_infix_expr_tc (HsBinTick {})                   = Nothing
@@ -781,7 +881,6 @@ ppr_apps fun args = hang (ppr_expr fun) 2 (fsep (map pp args))
     --   = char '@' <> pprHsType arg
     pp (Right arg)
       = text "@" <> ppr arg
-
 
 pprDebugParendExpr :: (OutputableBndrId p)
                    => PprPrec -> LHsExpr (GhcPass p) -> SDoc
@@ -863,12 +962,15 @@ hsExprNeedsParens prec = go
     go_x_tc :: XXExprGhcTc -> Bool
     go_x_tc (WrapExpr (HsWrap _ e))          = hsExprNeedsParens prec e
     go_x_tc (ExpansionExpr (HsExpanded a _)) = hsExprNeedsParens prec a
+    go_x_tc (ExpansionStmt{})                = False
     go_x_tc (ConLikeTc {})                   = False
     go_x_tc (HsTick _ (L _ e))               = hsExprNeedsParens prec e
     go_x_tc (HsBinTick _ _ (L _ e))          = hsExprNeedsParens prec e
 
-    go_x_rn :: HsExpansion (HsExpr GhcRn) (HsExpr GhcRn) -> Bool
-    go_x_rn (HsExpanded a _) = hsExprNeedsParens prec a
+    go_x_rn :: XXExprGhcRn -> Bool
+    go_x_rn (ExpandedExpr (HsExpanded a _)) = hsExprNeedsParens prec a
+    go_x_rn (ExpandedStmt _) = False
+    go_x_rn (PopErrCtxt (L _ a)) = hsExprNeedsParens prec a
 
 
 -- | Parenthesize an expression without token information
@@ -906,12 +1008,15 @@ isAtomicHsExpr (XExpr x)
     go_x_tc :: XXExprGhcTc -> Bool
     go_x_tc (WrapExpr      (HsWrap _ e))     = isAtomicHsExpr e
     go_x_tc (ExpansionExpr (HsExpanded a _)) = isAtomicHsExpr a
+    go_x_tc (ExpansionStmt {})               = False
     go_x_tc (ConLikeTc {})                   = True
     go_x_tc (HsTick {}) = False
     go_x_tc (HsBinTick {}) = False
 
-    go_x_rn :: HsExpansion (HsExpr GhcRn) (HsExpr GhcRn) -> Bool
-    go_x_rn (HsExpanded a _) = isAtomicHsExpr a
+    go_x_rn :: XXExprGhcRn -> Bool
+    go_x_rn (ExpandedExpr (HsExpanded a _)) = isAtomicHsExpr a
+    go_x_rn (ExpandedStmt _) = False
+    go_x_rn (PopErrCtxt (L _ a)) = isAtomicHsExpr a
 
 isAtomicHsExpr _ = False
 
@@ -1097,11 +1202,11 @@ data HsExpansion orig expanded
   = HsExpanded orig expanded
   deriving Data
 
--- | Just print the original expression (the @a@).
+-- | Just print the original expression (the @a@) with the expanded version (the @b@)
 instance (Outputable a, Outputable b) => Outputable (HsExpansion a b) where
   ppr (HsExpanded orig expanded)
     = ifPprDebug (vcat [ppr orig, braces (text "Expansion:" <+> ppr expanded)])
-                 (ppr orig)
+               (ppr orig)
 
 
 {-

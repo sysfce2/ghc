@@ -1669,11 +1669,13 @@ repE (HsProjection _ xs) = repProjection (fmap (field_label . unLoc . dfoLabel .
 repE (HsEmbTy _ _ t) = do
   t1 <- repLTy (hswc_body t)
   rep2 typeEName [unC t1]
-repE (XExpr (HsExpanded orig_expr ds_expr))
+repE (XExpr (ExpandedExpr (HsExpanded orig_expr ds_expr)))
   = do { rebindable_on <- lift $ xoptM LangExt.RebindableSyntax
        ; if rebindable_on  -- See Note [Quotation and rebindable syntax]
          then repE ds_expr
          else repE orig_expr }
+repE (XExpr (PopErrCtxt (L _ e))) = repE e
+repE e@(XExpr (ExpandedStmt _)) = notHandled (ThExpressionForm e)
 repE e@(HsPragE _ (HsPragSCC {}) _) = notHandled (ThCostCentres e)
 repE e@(HsTypedBracket{})   = notHandled (ThExpressionForm e)
 repE e@(HsUntypedBracket{}) = notHandled (ThExpressionForm e)

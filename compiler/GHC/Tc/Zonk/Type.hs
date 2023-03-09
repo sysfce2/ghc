@@ -1074,6 +1074,9 @@ zonkExpr (XExpr (WrapExpr (HsWrap co_fn expr)))
 zonkExpr (XExpr (ExpansionExpr (HsExpanded a b)))
   = XExpr . ExpansionExpr . HsExpanded a <$> zonkExpr b
 
+zonkExpr (XExpr (ExpansionStmt (HsExpanded a b)))
+  = XExpr . ExpansionStmt . HsExpanded a <$> zonkExpr b
+
 zonkExpr (XExpr (ConLikeTc con tvs tys))
   = XExpr . ConLikeTc con tvs <$> mapM zonk_scale tys
   where

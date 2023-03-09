@@ -85,6 +85,7 @@ module GHC.Tc.Utils.Monad(
 
   -- * Context management for the type checker
   getErrCtxt, setErrCtxt, addErrCtxt, addErrCtxtM, addLandmarkErrCtxt,
+  debugErrCtxt,
   addLandmarkErrCtxtM, popErrCtxt, getCtLocM, setCtLocM, mkCtLocEnv,
 
   -- * Diagnostic message generation (type checker)
@@ -1269,7 +1270,8 @@ updCtxt ctxt env
   | otherwise = addLclEnvErrCtxt ctxt env
 
 popErrCtxt :: TcM a -> TcM a
-popErrCtxt = updLclEnv (\env -> setLclEnvErrCtxt (pop $ getLclEnvErrCtxt env) env)
+popErrCtxt thing_inside = updLclEnv (\env -> setLclEnvErrCtxt (pop $ getLclEnvErrCtxt env) env) $
+                          debugErrCtxt $ thing_inside
            where
              pop []       = []
              pop (_:msgs) = msgs
@@ -1299,6 +1301,19 @@ setCtLocM (CtLoc { ctl_env = lcl }) thing_inside
                      $ setLclEnvErrCtxt (ctl_ctxt lcl)
                      $ setLclEnvBinderStack (ctl_bndrs lcl)
                      $ env) thing_inside
+
+
+
+debugErrCtxt :: TcRn a -> TcRn a
+debugErrCtxt thing_inside
+  = do { err_ctxt <- getErrCtxt
+       ; env0 <- liftZonkM tcInitTidyEnv
+       ; err_info <- mkErrInfo env0 err_ctxt
+       ; traceTc "debugErrCtxt" err_info
+       ; thing_inside
+       }
+
+
 
 
 {- *********************************************************************

@@ -39,7 +39,7 @@ module GHC.Hs.Pat (
 
         mkPrefixConPat, mkCharLitPat, mkNilPat,
 
-        isSimplePat,
+        isSimplePat, isPatSyn,
         looksLazyPatBind,
         isBangedLPat,
         gParPat, patNeedsParens, parenthesizePat,
@@ -505,7 +505,6 @@ looksLazyPat (VarPat {})   = False
 looksLazyPat (WildPat {})  = False
 looksLazyPat _             = True
 
-
 {-
 Note [-XStrict and irrefutability]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -619,7 +618,7 @@ isSimplePat p = case unLoc p of
   _ -> Nothing
 
 -- | Is this pattern boring from the perspective of pattern-match checking,
--- i.e. introduces no new pieces of long-dinstance information
+-- i.e. introduces no new pieces of long-distance information
 -- which could influence pattern-match checking?
 --
 -- See Note [Boring patterns].
@@ -668,6 +667,10 @@ isBoringHsPat = goL
          GhcTc -> case ext of
            CoPat _ pat _      -> go pat
            ExpansionPat _ pat -> go pat
+
+isPatSyn :: LPat GhcTc -> Bool
+isPatSyn (L _ (ConPat {pat_con = L _ (PatSynCon{})})) = True
+isPatSyn _ = False
 
 {- Note [Unboxed sum patterns aren't irrefutable]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

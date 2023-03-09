@@ -595,6 +595,9 @@ addTickHsExpr (XExpr (WrapExpr (HsWrap w e))) =
 addTickHsExpr (XExpr (ExpansionExpr (HsExpanded a b))) =
         liftM (XExpr . ExpansionExpr . HsExpanded a) $
               (addTickHsExpr b)
+addTickHsExpr (XExpr (ExpansionStmt (HsExpanded a b))) =
+        liftM (XExpr . ExpansionStmt . HsExpanded a) $
+              (addTickHsExpr b)
 
 addTickHsExpr e@(XExpr (ConLikeTc {})) = return e
   -- We used to do a freeVar on a pat-syn builder, but actually

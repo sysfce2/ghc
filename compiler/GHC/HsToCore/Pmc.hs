@@ -51,7 +51,7 @@ import GHC.HsToCore.Pmc.Utils
 import GHC.HsToCore.Pmc.Desugar
 import GHC.HsToCore.Pmc.Check
 import GHC.HsToCore.Pmc.Solver
-import GHC.Types.Basic (Origin(..))
+import GHC.Types.Basic (Origin(..), isDoExpansionGenerated)
 import GHC.Core
 import GHC.Driver.DynFlags
 import GHC.Hs
@@ -161,20 +161,21 @@ pmcGRHSs hs_ctxt guards@(GRHSs _ grhss _) = do
 -- checks an @-XEmptyCase@ with only a single match variable.
 -- See Note [Checking EmptyCase].
 pmcMatches
-  :: DsMatchContext                  -- ^ Match context, for warnings messages
+  :: Origin
+  -> DsMatchContext                  -- ^ Match context, for warnings messages
   -> [Id]                            -- ^ Match variables, i.e. x and y above
   -> [LMatch GhcTc (LHsExpr GhcTc)]  -- ^ List of matches
   -> DsM [(Nablas, NonEmpty Nablas)] -- ^ One covered 'Nablas' per Match and
                                      --   GRHS, for long distance info.
-pmcMatches ctxt vars matches = {-# SCC "pmcMatches" #-} do
+pmcMatches origin ctxt vars matches = {-# SCC "pmcMatches" #-} do
   -- We have to force @missing@ before printing out the trace message,
   -- otherwise we get interleaved output from the solver. This function
   -- should be strict in @missing@ anyway!
   !missing <- getLdiNablas
   tracePm "pmcMatches {" $
-          hang (vcat [ppr ctxt, ppr vars, text "Matches:"])
+          hang (vcat [ppr origin, ppr ctxt, ppr vars, text "Matches:"])
                2
-               (vcat (map ppr matches) $$ ppr missing)
+               ((ppr matches) $$ (text "missing:" <+> ppr missing))
   case NE.nonEmpty matches of
     Nothing -> do
       -- This must be an -XEmptyCase. See Note [Checking EmptyCase]
@@ -190,7 +191,9 @@ pmcMatches ctxt vars matches = {-# SCC "pmcMatches" #-} do
       result  <- {-# SCC "checkMatchGroup" #-}
                  unCA (checkMatchGroup matches) missing
       tracePm "}: " (ppr (cr_uncov result))
-      {-# SCC "formatReportWarnings" #-} formatReportWarnings ReportMatchGroup ctxt vars result
+      when (not (isDoExpansionGenerated origin)) -- Generated code shouldn't emit overlapping warnings
+        ({-# SCC "formatReportWarnings" #-}
+        formatReportWarnings ReportMatchGroup ctxt vars result)
       return (NE.toList (ldiMatchGroup (cr_ret result)))
 
 {-

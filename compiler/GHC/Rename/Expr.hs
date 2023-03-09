@@ -24,7 +24,7 @@ free variables.
 -}
 
 module GHC.Rename.Expr (
-        rnLExpr, rnExpr, rnStmts, mkExpandedExpr,
+        rnLExpr, rnExpr, rnStmts,
         AnnoBody, UnexpectedStatement(..)
    ) where
 
@@ -190,6 +190,25 @@ but several have a little bit of special treatment:
 
       in which an updated field has a higher-rank type.
       See Wrinkle [Using IdSig] in Note [Record Updates] in GHC.Tc.Gen.Expr.
+
+* HsDo: We expand HsDo statements in GHC.Tc.Expr
+        as we need to check for pattern irrefutability
+        which is dependent on the type constructor details available in TcM and not Rn monad
+
+    - For example, a user written code:
+
+                  do x <- e1
+                     g x
+                     return (f x)
+
+      is expanded to (roughly)
+
+                   (>>=) e1
+                        (\ x -> (>>) (g x)
+                                      (return (f x)))
+
+     See Note [Expanding HsDo with HsExpansion] in Ghc.Tc.Gen.Match for more details
+
 
 Note [Overloaded labels]
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -441,7 +460,6 @@ rnExpr (HsDo _ do_or_lc (L l stmts))
             (\ _ -> return ((), emptyFVs))
       ; (pp_stmts, fvs2) <- postProcessStmtsForApplicativeDo do_or_lc stmts1
       ; return ( HsDo noExtField do_or_lc (L l pp_stmts), fvs1 `plusFV` fvs2 ) }
-
 -- ExplicitList: see Note [Handling overloaded and rebindable constructs]
 rnExpr (ExplicitList _ exps)
   = do  { (exps', fvs) <- rnExprs exps
@@ -1187,7 +1205,7 @@ rnStmt ctxt rnBody (L loc (LastStmt _ (L lb body) noret _)) thing_inside
                             else return (noSyntaxExpr, emptyFVs)
                             -- The 'return' in a LastStmt is used only
                             -- for MonadComp; and we don't want to report
-                            -- "non in scope: return" in other cases
+                            -- "not in scope: return" in other cases
                             -- #15607
 
         ; (thing,  fvs3) <- thing_inside []
@@ -1833,7 +1851,7 @@ independent and do something like this:
      (y,z) <- (,) <$> B x <*> C
      return (f x y z)
 
-But this isn't enough! A and C were also independent, and this
+But this isn't enough! If A and C were also independent, then this
 transformation loses the ability to do A and C in parallel.
 
 The algorithm works by first splitting the sequence of statements into
@@ -2721,14 +2739,6 @@ getMonadFailOp ctxt
 *                                                                      *
 ********************************************************************* -}
 
--- | Build a 'HsExpansion' out of an extension constructor,
---   and the two components of the expansion: original and
---   desugared expressions.
-mkExpandedExpr
-  :: HsExpr GhcRn           -- ^ source expression
-  -> HsExpr GhcRn           -- ^ expanded expression
-  -> HsExpr GhcRn           -- ^ suitably wrapped 'HsExpansion'
-mkExpandedExpr a b = XExpr (HsExpanded a b)
 
 -----------------------------------------
 -- Bits and pieces for RecordDotSyntax.

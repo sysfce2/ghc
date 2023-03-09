@@ -146,6 +146,7 @@ hsExprType (HsPragE _ _ e) = lhsExprType e
 hsExprType (HsEmbTy x _ _) = dataConCantHappen x
 hsExprType (XExpr (WrapExpr (HsWrap wrap e))) = hsWrapperType wrap $ hsExprType e
 hsExprType (XExpr (ExpansionExpr (HsExpanded _ tc_e))) = hsExprType tc_e
+hsExprType (XExpr (ExpansionStmt (HsExpanded _ tc_e))) = hsExprType tc_e
 hsExprType (XExpr (ConLikeTc con _ _)) = conLikeType con
 hsExprType (XExpr (HsTick _ e)) = lhsExprType e
 hsExprType (XExpr (HsBinTick _ _ e)) = lhsExprType e

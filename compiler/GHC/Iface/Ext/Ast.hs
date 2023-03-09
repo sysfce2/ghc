@@ -1238,6 +1238,8 @@ instance HiePass p => ToHie (LocatedA (HsExpr (GhcPass p))) where
                   , toHie (L mspan w) ]
              ExpansionExpr (HsExpanded _ b)
                -> [ toHie (L mspan b) ]
+             ExpansionStmt (HsExpanded _ b)
+               -> [ toHie (L mspan b) ]
              ConLikeTc con _ _
                -> [ toHie $ C Use $ L mspan $ conLikeName con ]
              HsTick _ expr

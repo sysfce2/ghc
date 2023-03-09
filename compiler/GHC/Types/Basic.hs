@@ -38,6 +38,7 @@ module GHC.Types.Basic (
 
         RecFlag(..), isRec, isNonRec, boolToRecFlag,
         Origin(..), isGenerated, DoPmc(..), requiresPMC,
+        GenReason(..), isDoExpansionGenerated, doExpansionOrigin,
 
         RuleName, pprRuleName,
 
@@ -588,16 +589,36 @@ instance Binary RecFlag where
 --
 -- See Note [Generated code and pattern-match checking].
 data Origin = FromSource
-            | Generated DoPmc
+            | Generated GenReason DoPmc
             deriving( Eq, Data )
 
 isGenerated :: Origin -> Bool
 isGenerated Generated {} = True
 isGenerated FromSource   = False
 
+-- | Why was the piece of code generated?
+--
+-- See Note [Expanding HsDo with HsExpansion].
+data GenReason = DoExpansion
+               | OtherExpansion
+               deriving (Eq, Data)
+
+instance Outputable GenReason where
+  ppr DoExpansion  = text "DoExpansion"
+  ppr OtherExpansion  = text "OtherExpansion"
+
+isDoExpansionGenerated :: Origin -> Bool
+isDoExpansionGenerated (Generated DoExpansion _) = True
+isDoExpansionGenerated _ = False
+
+doExpansionOrigin :: Origin
+doExpansionOrigin = Generated DoExpansion DoPmc
+                    -- It is important that we perfrom PMC on these
+                    -- statements to get the right warnings
+
 instance Outputable Origin where
   ppr FromSource      = text "FromSource"
-  ppr (Generated pmc) = text "Generated" <+> ppr pmc
+  ppr (Generated reason pmc) = text "Generated" <+> ppr reason <+> ppr pmc
 
 -- | Whether to run pattern-match checks in generated code.
 --
@@ -615,7 +636,8 @@ instance Outputable DoPmc where
 --
 -- See Note [Generated code and pattern-match checking].
 requiresPMC :: Origin -> Bool
-requiresPMC (Generated SkipPmc) = False
+requiresPMC (Generated DoExpansion _) = True
+requiresPMC (Generated _ SkipPmc) = False
 requiresPMC _ = True
 
 {- Note [Generated code and pattern-match checking]

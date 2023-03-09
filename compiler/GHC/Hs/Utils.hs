@@ -271,7 +271,7 @@ mkHsLam :: (IsPass p, XMG (GhcPass p) (LHsExpr (GhcPass p)) ~ Origin)
         -> LHsExpr (GhcPass p)
 mkHsLam pats body = mkHsPar (L (getLoc body) (HsLam noExtField matches))
   where
-    matches = mkMatchGroup (Generated SkipPmc)
+    matches = mkMatchGroup (Generated OtherExpansion SkipPmc)
                            (noLocA [mkSimpleMatch LambdaExpr pats' body])
     pats' = map (parenthesizePat appPrec) pats
 
@@ -289,6 +289,7 @@ mkHsCaseAlt :: (Anno (GRHS (GhcPass p) (LocatedA (body (GhcPass p))))
             -> LMatch (GhcPass p) (LocatedA (body (GhcPass p)))
 mkHsCaseAlt pat expr
   = mkSimpleMatch CaseAlt [pat] expr
+
 
 nlHsTyApp :: Id -> [Type] -> LHsExpr GhcTc
 nlHsTyApp fun_id tys
@@ -600,7 +601,7 @@ nlList   :: [LHsExpr GhcPs] -> LHsExpr GhcPs
 
 -- AZ:Is this used?
 nlHsLam match = noLocA $ HsLam noExtField
-              $ mkMatchGroup (Generated SkipPmc) (noLocA [match])
+              $ mkMatchGroup (Generated OtherExpansion SkipPmc) (noLocA [match])
 nlHsPar e     = noLocA (gHsPar e)
 
 -- nlHsIf should generate if-expressions which are NOT subject to
@@ -609,7 +610,7 @@ nlHsIf :: LHsExpr GhcPs -> LHsExpr GhcPs -> LHsExpr GhcPs -> LHsExpr GhcPs
 nlHsIf cond true false = noLocA (HsIf noAnn cond true false)
 
 nlHsCase expr matches
-  = noLocA (HsCase noAnn expr (mkMatchGroup (Generated SkipPmc) (noLocA matches)))
+  = noLocA (HsCase noAnn expr (mkMatchGroup (Generated OtherExpansion SkipPmc) (noLocA matches)))
 nlList exprs          = noLocA (ExplicitList noAnn exprs)
 
 nlHsAppTy :: LHsType (GhcPass p) -> LHsType (GhcPass p) -> LHsType (GhcPass p)
@@ -868,7 +869,7 @@ spanHsLocaLBinds (HsIPBinds _ (IPBinds _ bs))
 mkSimpleGeneratedFunBind :: SrcSpan -> RdrName -> [LPat GhcPs]
                          -> LHsExpr GhcPs -> LHsBind GhcPs
 mkSimpleGeneratedFunBind loc fun pats expr
-  = L (noAnnSrcSpan loc) $ mkFunBind (Generated SkipPmc) (L (noAnnSrcSpan loc) fun)
+  = L (noAnnSrcSpan loc) $ mkFunBind (Generated OtherExpansion SkipPmc) (L (noAnnSrcSpan loc) fun)
               [mkMatch (mkPrefixFunRhs (L (noAnnSrcSpan loc) fun)) pats expr
                        emptyLocalBinds]
 

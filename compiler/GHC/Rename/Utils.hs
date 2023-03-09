@@ -18,11 +18,15 @@ module GHC.Rename.Utils (
         warnForallIdentifier,
         checkUnusedRecordWildcard,
         badQualBndrErr, typeAppErr, badFieldConErr,
-        wrapGenSpan, genHsVar, genLHsVar, genHsApp, genHsApps, genLHsApp,
+        wrapGenSpan, genHsVar, genLHsVar, genHsApp, genHsApps, genLHsApp, genHsExpApps,
         genAppType,
         genLHsLit, genHsIntegralLit, genHsTyLit, genSimpleConPat,
         genVarPat, genWildPat,
         genSimpleFunBind, genFunBind,
+
+        genHsLamDoExp, genHsCaseAltDoExp, genSimpleMatch,
+
+        genHsLet,
 
         newLocalBndrRn, newLocalBndrsRn,
 
@@ -578,6 +582,9 @@ wrapGenSpan x = L (noAnnSrcSpan generatedSrcSpan) x
 genHsApps :: Name -> [LHsExpr GhcRn] -> HsExpr GhcRn
 genHsApps fun args = foldl genHsApp (genHsVar fun) args
 
+genHsExpApps :: HsExpr GhcRn -> [LHsExpr GhcRn] -> HsExpr GhcRn
+genHsExpApps fun arg = foldl genHsApp fun arg
+
 genHsApp :: HsExpr GhcRn -> LHsExpr GhcRn -> HsExpr GhcRn
 genHsApp fun arg = HsApp noAnn (wrapGenSpan fun) arg
 
@@ -628,11 +635,48 @@ genFunBind :: LocatedN Name -> [LMatch GhcRn (LHsExpr GhcRn)]
            -> HsBind GhcRn
 genFunBind fn ms
   = FunBind { fun_id = fn
-            , fun_matches = mkMatchGroup (Generated SkipPmc) (wrapGenSpan ms)
+            , fun_matches = mkMatchGroup (Generated OtherExpansion SkipPmc) (wrapGenSpan ms)
             , fun_ext = emptyNameSet
             }
+
 
 isIrrefutableHsPatRn :: forall p. (OutputableBndrId p)
                   => DynFlags -> LPat (GhcPass p) -> Bool
 isIrrefutableHsPatRn dflags =
     isIrrefutableHsPat (xopt LangExt.Strict dflags)
+
+genHsLet :: HsLocalBindsLR GhcRn GhcRn -> LHsExpr GhcRn -> HsExpr GhcRn
+genHsLet bindings body = HsLet noExtField noHsTok bindings noHsTok body
+
+genHsLamDoExp :: (IsPass p, XMG (GhcPass p) (LHsExpr (GhcPass p)) ~ Origin)
+        => [LPat (GhcPass p)]
+        -> LHsExpr (GhcPass p)
+        -> LHsExpr (GhcPass p)
+genHsLamDoExp pats body = mkHsPar (wrapGenSpan $ HsLam noExtField matches)
+  where
+    matches = mkMatchGroup doExpansionOrigin
+                           (wrapGenSpan [genSimpleMatch (StmtCtxt (HsDoStmt (DoExpr Nothing))) pats' body])
+    pats' = map (parenthesizePat appPrec) pats
+
+
+genHsCaseAltDoExp :: (Anno (GRHS (GhcPass p) (LocatedA (body (GhcPass p))))
+                     ~ SrcAnn NoEpAnns,
+                 Anno (Match (GhcPass p) (LocatedA (body (GhcPass p))))
+                        ~ SrcSpanAnnA)
+            => LPat (GhcPass p) -> (LocatedA (body (GhcPass p)))
+            -> LMatch (GhcPass p) (LocatedA (body (GhcPass p)))
+genHsCaseAltDoExp pat expr
+  = genSimpleMatch (StmtCtxt (HsDoStmt (DoExpr Nothing)))  [pat] expr
+
+
+genSimpleMatch :: (Anno (Match (GhcPass p) (LocatedA (body (GhcPass p))))
+                        ~ SrcSpanAnnA,
+                  Anno (GRHS (GhcPass p) (LocatedA (body (GhcPass p))))
+                        ~ SrcAnn NoEpAnns)
+              => HsMatchContext (GhcPass p)
+              -> [LPat (GhcPass p)] -> LocatedA (body (GhcPass p))
+              -> LMatch (GhcPass p) (LocatedA (body (GhcPass p)))
+genSimpleMatch ctxt pats rhs
+  = wrapGenSpan $
+    Match { m_ext = noAnn, m_ctxt = ctxt, m_pats = pats
+          , m_grhss = unguardedGRHSs generatedSrcSpan rhs noAnn }

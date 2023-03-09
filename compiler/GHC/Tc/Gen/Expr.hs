@@ -53,7 +53,6 @@ import GHC.Tc.Gen.Head
 import GHC.Tc.Gen.Bind        ( tcLocalBinds )
 import GHC.Tc.Instance.Family ( tcGetFamInstEnvs )
 import GHC.Core.FamInstEnv    ( FamInstEnvs )
-import GHC.Rename.Expr        ( mkExpandedExpr )
 import GHC.Rename.Env         ( addUsedGRE, getUpdFieldLbls, DeprecationWarnings(..) )
 import GHC.Tc.Utils.Env
 import GHC.Tc.Gen.Arrow
@@ -88,6 +87,8 @@ import GHC.Data.Maybe
 import GHC.Utils.Outputable as Outputable
 import GHC.Utils.Panic
 import GHC.Utils.Panic.Plain
+
+import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
 import qualified Data.List.NonEmpty as NE
@@ -208,8 +209,10 @@ tcExpr e@(OpApp {})              res_ty = tcApp e res_ty
 tcExpr e@(HsAppType {})          res_ty = tcApp e res_ty
 tcExpr e@(ExprWithTySig {})      res_ty = tcApp e res_ty
 tcExpr e@(HsRecSel {})           res_ty = tcApp e res_ty
-tcExpr e@(XExpr (HsExpanded {})) res_ty = tcApp e res_ty
 tcExpr e@(HsUntypedSplice {})    res_ty = tcApp e res_ty
+
+tcExpr (XExpr e)                 res_ty = tcXExpr e res_ty
+
 
 tcExpr e@(HsOverLit _ lit) res_ty
   = do { mb_res <- tcShortCutLit lit res_ty
@@ -268,7 +271,12 @@ tcExpr (HsLam _ match) res_ty
   = do  { (wrap, match') <- tcMatchLambda herald match_ctxt match res_ty
         ; return (mkHsWrap wrap (HsLam noExtField match')) }
   where
-    match_ctxt = MC { mc_what = LambdaExpr, mc_body = tcBody }
+    match_ctxt = case mg_ext match of
+                   Generated DoExpansion _ -> MC { mc_what = StmtCtxt (HsDoStmt (DoExpr Nothing))
+                                                 , mc_body = tcBodyNC
+                                                 }
+                   _ -> MC { mc_what = LambdaExpr
+                           , mc_body = tcBody }
     herald = ExpectedFunTyLam match
 
 tcExpr e@(HsLamCase x lc_variant matches) res_ty
@@ -383,7 +391,6 @@ tcExpr (HsCase x scrut matches) res_ty
           -- This design choice is discussed in #17790
         ; (scrut', scrut_ty) <- tcScalingUsage mult $ tcInferRho scrut
 
-        ; traceTc "HsCase" (ppr scrut_ty)
         ; hasFixedRuntimeRep_syntactic FRRCase scrut_ty
         ; matches' <- tcMatchesCase match_ctxt (Scaled mult scrut_ty) matches res_ty
         ; return (HsCase x scrut' matches') }
@@ -403,6 +410,23 @@ tcExpr (HsMultiIf _ alts) res_ty
        ; res_ty <- readExpType res_ty
        ; return (HsMultiIf res_ty alts') }
   where match_ctxt = MC { mc_what = IfAlt, mc_body = tcBody }
+
+tcExpr hsDo@(HsDo _ do_or_lc@(DoExpr{}) ss@(L _  stmts)) res_ty
+-- In the case of vanilla do expression.
+-- We expand the statements into explicit application of binds, thens and lets
+-- This helps in infering the right types for bind expressions when impredicativity is turned on
+-- See Note [Expanding HsDo with HsExpansion] in GHC.Tc.Gen.Match.hs
+  = do { isApplicativeDo <- xoptM LangExt.ApplicativeDo
+       ; if isApplicativeDo
+         then tcDoStmts do_or_lc ss res_ty  -- Use tcSyntaxOp if ApplicativeDo is turned on
+         else do { expanded_expr <- expandDoStmts do_or_lc stmts
+                                               -- Do expansion on the fly
+                 -- ; traceTc "tcDoStmts hsDo" (vcat [ ppr hsDo
+                 --                                  , text "expr:" <+> ppr expanded_expr
+                 --                                  ])
+                 ; mkExpandedExprTc hsDo <$> tcExpr (unLoc expanded_expr) res_ty
+                 }
+       }
 
 tcExpr (HsDo _ do_or_lc stmts) res_ty
   = tcDoStmts do_or_lc stmts res_ty
@@ -591,6 +615,46 @@ tcExpr e@(HsUntypedBracket ps body) res_ty = tcUntypedBracket e body ps res_ty
 tcExpr (HsOverLabel {})    ty = pprPanic "tcExpr:HsOverLabel"  (ppr ty)
 tcExpr (SectionL {})       ty = pprPanic "tcExpr:SectionL"    (ppr ty)
 tcExpr (SectionR {})       ty = pprPanic "tcExpr:SectionR"    (ppr ty)
+
+
+{-
+************************************************************************
+*                                                                      *
+                Expansion Expressions (XXExprGhcRn)
+*                                                                      *
+************************************************************************
+-}
+
+tcXExpr :: XXExprGhcRn -> ExpRhoType -> TcM (HsExpr GhcTc)
+
+tcXExpr xe@(ExpandedExpr {}) res_ty = tcApp (XExpr xe) res_ty
+
+tcXExpr xe@(ExpandedStmt (HsExpanded stmt@(L loc s) expd_expr)) res_ty
+  | LetStmt{} <- s
+  , HsLet x tkLet binds tkIn e <- expd_expr
+  =  do { (binds', e') <-  setSrcSpanA loc $
+                            addStmtCtxt (text "tcExpr let") s $
+                            tcLocalBinds binds $
+                            tcMonoExprNC e res_ty -- NB: Do not call tcMonoExpr here as it adds
+                                                  -- a duplicate error context
+        ; return $ mkExpandedStmtTc stmt (HsLet x tkLet binds' tkIn e')
+        }
+  | LastStmt{} <- s
+  =  setSrcSpanA loc $
+          addStmtCtxt (text "tcExpr last") s $
+          mkExpandedStmtTc stmt <$> tcExpr expd_expr res_ty
+                -- It is important that we call tcExpr (and not tcApp) here as
+                -- `e` is just the last statement's body expression
+                -- and not a HsApp of a generated (>>) or (>>=)
+                -- This improves error messages e.g. T18324b.hs
+  | otherwise = setSrcSpanA loc $
+                mkExpandedStmtTc stmt <$> tcApp (XExpr xe) res_ty
+
+tcXExpr (PopErrCtxt (L loc e)) res_ty
+  = popErrCtxt $
+      setSrcSpanA loc $
+      tcExpr e res_ty
+
 
 
 {-
@@ -1281,7 +1345,7 @@ desugarRecordUpd record_expr possible_parents rbnds res_ty
 
              case_expr :: HsExpr GhcRn
              case_expr = HsCase RecUpd record_expr
-                       $ mkMatchGroup (Generated DoPmc) (wrapGenSpan matches)
+                       $ mkMatchGroup (Generated OtherExpansion DoPmc) (wrapGenSpan matches)
              matches :: [LMatch GhcRn (LHsExpr GhcRn)]
              matches = map make_pat relevant_cons
 

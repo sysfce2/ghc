@@ -26,7 +26,7 @@ module GHC.Tc.Utils.Instantiate (
 
      tcInstInvisibleTyBindersN, tcInstInvisibleTyBinders, tcInstInvisibleTyBinder,
 
-     newOverloadedLit, mkOverLit,
+     newOverloadedLit, mkOverLit, mkOverLitRn,
 
      newClsInst, newFamInst,
      tcGetInsts, tcGetInstEnvs, getOverlapFlag,
@@ -718,6 +718,19 @@ mkOverLit (HsFractional r)
         ; return (HsRat noExtField r rat_ty) }
 
 mkOverLit (HsIsString src s) = return (HsString src s)
+
+mkOverLitRn ::OverLitVal -> TcM (HsLit GhcRn)
+mkOverLitRn (HsIntegral i)
+  = do  { integer_ty <- tcMetaTy integerTyConName
+        ; return (HsInteger (il_text i)
+                            (il_value i) integer_ty) }
+
+mkOverLitRn (HsFractional r)
+  = do  { rat_ty <- tcMetaTy rationalTyConName
+        ; return (HsRat noExtField r rat_ty) }
+
+mkOverLitRn (HsIsString src s) = return (HsString src s)
+
 
 {-
 ************************************************************************

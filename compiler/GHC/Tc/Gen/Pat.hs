@@ -20,6 +20,7 @@ module GHC.Tc.Gen.Pat
    , tcCheckPat, tcCheckPat_O, tcInferPat
    , tcPats
    , addDataConStupidTheta
+   , isIrrefutableHsPatRn'
    )
 where
 
@@ -76,6 +77,7 @@ import GHC.Data.List.SetOps ( getNth )
 import Language.Haskell.Syntax.Basic (FieldLabelString(..))
 
 import Data.List( partition )
+import Data.Maybe (isJust)
 
 {-
 ************************************************************************
@@ -103,7 +105,7 @@ tcLetPat sig_fn no_gen pat pat_ty thing_inside
 
 -----------------
 tcPats :: HsMatchContext GhcTc
-       -> [LPat GhcRn]             -- ^ atterns
+       -> [LPat GhcRn]             -- ^ patterns
        -> [ExpPatType]             -- ^ types of the patterns
        -> TcM a                    -- ^ checker for the body
        -> TcM ([LPat GhcTc], a)
@@ -1651,3 +1653,63 @@ checkGADT conlike ex_tvs arg_tys = \case
   where
     has_existentials :: Bool
     has_existentials = any (`elemVarSet` tyCoVarsOfTypes arg_tys) ex_tvs
+
+-- | Very similar to GHC.Tc.Pat.isIrrefutableHsPat, but doesn't depend on type checking
+--   It does depend on the type environment however as we need to check ConPat case in more detail
+isIrrefutableHsPatRn' :: TcGblEnv -> Bool -> LPat GhcRn -> TcM Bool
+isIrrefutableHsPatRn' tc_env is_strict pat = goL pat
+  where
+    goL :: LPat GhcRn -> TcM Bool
+    goL = go . unLoc
+
+    go :: Pat GhcRn -> TcM Bool
+    go (WildPat {})        = return True
+    go (VarPat {})         = return True
+    go (LazyPat _ p')
+      | is_strict
+      = isIrrefutableHsPatRn' tc_env False p'
+      | otherwise          = return True
+    go (BangPat _ pat)     = goL pat
+    go (ParPat _ _ pat _)  = goL pat
+    go (AsPat _ _ _ pat)   = goL pat
+    go (ViewPat _ _ pat)   = goL pat
+    go (SigPat _ pat _)    = goL pat
+    go (TuplePat _ pats _) = do bs <- mapM goL pats
+                                return (and bs)
+    go (SumPat {})         = return False
+                    -- See Note [Unboxed sum patterns aren't irrefutable]
+    go (ListPat {})        = return False
+
+    go (ConPat
+        { pat_con  = L _ dcName
+        , pat_args = details }) =
+      do { tyth <- tcLookupGlobal dcName
+         ; case tyth of
+              (ATyCon tycon) ->
+                   do { bs <- mapM goL (hsConPatArgs details)
+                      ; let b' = isJust (tyConSingleDataCon_maybe tycon)
+                      ; return (b' && and bs) }
+              (AConLike cl) ->
+                   case cl of
+                       RealDataCon dc ->
+                         do let tycon = dataConTyCon dc
+                            let b' = isJust (tyConSingleDataCon_maybe tycon)
+                            bs <- mapM goL (hsConPatArgs details)
+                            return (b' && and bs)
+                       PatSynCon _pat -> return False -- conservative
+              _ -> pprPanic "isIrrefutableHsPatRn'" (ppr tyth)
+          }
+    go (LitPat {})         = return False
+    go (NPat {})           = return False
+    go (NPlusKPat {})      = return False
+
+    -- We conservatively assume that no TH splices are irrefutable
+    -- since we cannot know until the splice is evaluated.
+    go (SplicePat {})      = return False
+
+    -- The behavior of this case is unimportant, as GHC will throw an error shortly
+    -- after reaching this case for other reasons (see TcRnIllegalTypePattern).
+    go (EmbTyPat {})       = return True
+
+    go (XPat ext)          = case ext of
+                               HsPatExpanded _ pat -> go pat
