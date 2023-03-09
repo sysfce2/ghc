@@ -446,6 +446,14 @@
    HP_CHK_P(bytes);                             \
    TICK_ALLOC_RTS(bytes);
 
+// Load a field out of structure with relaxed ordering.
+#define RELAXED_LOAD_FIELD(fld, ptr) \
+    REP_##fld![(ptr) + OFFSET_##fld]
+
+// Load a field out of an StgClosure with relaxed ordering.
+#define RELAXED_LOAD_CLOSURE_FIELD(fld, ptr) \
+    REP_##fld![(ptr) + SIZEOF_StgHeader + OFFSET_##fld]
+
 #define CHECK_GC()                                                      \
   (bdescr_link(CurrentNursery) == NULL ||                               \
    generation_n_new_large_words(W_[g0]) >= TO_W_(CLong[large_alloc_lim]))
