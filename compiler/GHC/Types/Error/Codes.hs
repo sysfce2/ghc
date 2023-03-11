@@ -600,6 +600,7 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "TcRnBindingNameConflict"                       = 10498
   GhcDiagnosticCode "NonCanonicalMonoid"                            = 50928
   GhcDiagnosticCode "NonCanonicalMonad"                             = 22705
+  GhcDiagnosticCode "TcRnDefaultedExceptionContext"                 = 46235
 
   -- PatSynInvalidRhsReason
   GhcDiagnosticCode "PatSynNotInvertible"                           = 69317
