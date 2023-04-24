@@ -1048,6 +1048,27 @@ of arity n:
   If we couldn't decompose in the previous step, we return SurelyApart.
 
 Afterwards, the rest of the code doesn't have to worry about type families.
+
+Note [Prefer binding the left variable]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When we are unifying and have a ~ b, where both are bindable
+(BindMe), then do we set a |-> b or b |-> a? Either would be
+correct. But we always choose a |-> b. This design gives us
+the following nice property:
+
+  * Assume fv(τ1) ∩ fv(τ2) = ∅. Then:
+    Iff Just θ = unify τ1 τ2 and fv(τ2) ∩ dom(θ) = ∅, then
+    running match τ1 τ2 would also return Just θ.
+
+This property is useful to avoid running the unification
+algorithm twice when we want to differentiate between the
+matching and unification case; search for references to this
+Note to see where it is put into action.
+
+The types in the unification algorithm *can* get swapped,
+but this happens only in the non-tyvar / tyvar case, where we're
+sure that any successful result will include a binding for
+a variable free in τ2.
 -}
 
 -------------- unify_ty: the main workhorse -----------
@@ -1329,6 +1350,8 @@ uUnrefined env tv1' ty2 ty2' kco
              ty1 = mkTyVarTy tv1'
        ; case (b1, b2) of
            (BindMe, _) -> bindTv env tv1' rhs1
+             -- See Note [Prefer binding the left variable]
+
            (_, BindMe) | um_unif env
                        -> bindTv (umSwapRn env) tv2 rhs2
 
@@ -2105,4 +2128,3 @@ mkFlattenFreshCoVar in_scope kind
   = let uniq = unsafeGetFreshLocalUnique in_scope
         name = mkSystemVarName uniq (fsLit "flc")
     in mkCoVar name kind
-

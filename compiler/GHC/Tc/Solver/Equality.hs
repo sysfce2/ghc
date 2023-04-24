@@ -32,7 +32,7 @@ import GHC.Core.TyCo.Rep   -- cleverly decomposes types, good for completeness c
 import GHC.Core.Coercion
 import GHC.Core.Coercion.Axiom
 import GHC.Core.Reduction
-import GHC.Core.Unify( tcUnifyTyWithTFs )
+import GHC.Core.Unify( tcUnifyTyWithTFs, flattenTys )
 import GHC.Core.InstEnv ( Coherence(..) )
 import GHC.Core.FamInstEnv ( FamInstEnvs, FamInst(..), apartnessCheck
                            , lookupFamInstEnvByTyCon )
@@ -40,7 +40,9 @@ import GHC.Core
 
 import GHC.Types.Var
 import GHC.Types.Var.Env
-import GHC.Types.Var.Set( anyVarSet )
+import GHC.Types.Var.Set
+import GHC.Types.Unique.Set ( getUniqSet )
+import GHC.Types.Unique.FM ( isNullUFM )
 import GHC.Types.Name.Reader
 import GHC.Types.Basic
 
@@ -3011,6 +3013,14 @@ improveTopFunEqs fam_tc args (EqCt { eq_ev = ev, eq_rhs = rhs })
         -- ToDo: this location is wrong; it should be FunDepOrigin2
         -- See #14778
 
+type ImprovementData = ( [Type], Subst, [TyVar], InScopeSet, Maybe CoAxBranch )
+             -- ( [arguments of a matching axiom]
+             -- , RHS-unifying substitution
+             -- , axiom variables without substitution
+             -- , an InScopeSet containing both the free variables of the rhs_ty and
+             --   the axiom tvs
+             -- , Maybe matching axiom [Nothing - open TF, Just - closed TF ] )
+
 improve_top_fun_eqs :: FamInstEnvs
                     -> TyCon -> [TcType] -> TcType
                     -> TcS [TypeEqn]
@@ -3024,18 +3034,22 @@ improve_top_fun_eqs fam_envs fam_tc args rhs_ty
   , let fam_insts = lookupFamInstEnvByTyCon fam_envs fam_tc
   = -- it is possible to have several compatible equations in an open type
     -- family but we only want to derive equalities from one such equation.
-    do { let improvs = buildImprovementData fam_insts
-                           fi_tvs fi_tys fi_rhs (const Nothing)
-
+    do { let improvs = buildOpenImprovementData fam_insts
        ; traceTcS "improve_top_fun_eqs2" (ppr improvs)
        ; concatMapM (injImproveEqns injective_args) $
          take 1 improvs }
 
   | Just ax <- isClosedSynFamilyTyConWithAxiom_maybe fam_tc
-  , Injective injective_args <- tyConInjectivityInfo fam_tc
-  = concatMapM (injImproveEqns injective_args) $
-    buildImprovementData (fromBranches (co_ax_branches ax))
-                         cab_tvs cab_lhs cab_rhs Just
+  = let stuff = buildClosedImprovementData (fromBranches (co_ax_branches ax))
+    in
+    case stuff of
+      [(_, improv_data)] -> injImproveEqns (repeat True) improv_data
+      _ -> case tyConInjectivityInfo fam_tc of
+        Injective injective_args -> concatMapM (injImproveEqns injective_args) $
+                                    [ improv_data
+                                    | (ax_tv_set, improv_data) <- stuff
+                                    , just_a_match ax_tv_set improv_data ]
+        NotInjective -> return []
 
   | otherwise
   = return []
@@ -3043,35 +3057,43 @@ improve_top_fun_eqs fam_envs fam_tc args rhs_ty
   where
       in_scope = mkInScopeSet (tyCoVarsOfType rhs_ty)
 
-      buildImprovementData
-          :: [a]                     -- axioms for a TF (FamInst or CoAxBranch)
-          -> (a -> [TyVar])          -- get bound tyvars of an axiom
-          -> (a -> [Type])           -- get LHS of an axiom
-          -> (a -> Type)             -- get RHS of an axiom
-          -> (a -> Maybe CoAxBranch) -- Just => apartness check required
-          -> [( [Type], Subst, [TyVar], Maybe CoAxBranch )]
-             -- Result:
-             -- ( [arguments of a matching axiom]
-             -- , RHS-unifying substitution
-             -- , axiom variables without substitution
-             -- , Maybe matching axiom [Nothing - open TF, Just - closed TF ] )
-      buildImprovementData axioms axiomTVs axiomLHS axiomRHS wrap =
-          [ (ax_args, subst, unsubstTvs, wrap axiom)
+      notInSubst subst tv = not (tv `elemVarEnv` getTvSubstEnv subst)
+
+      buildOpenImprovementData
+          :: [FamInst]
+          -> [ImprovementData]
+      buildOpenImprovementData axioms =
+        [ (fi_tys axiom, subst, unsubstTvs, in_scope1, Nothing)
+        | axiom <- axioms
+        , let ax_tvs = fi_tvs axiom
+              in_scope1 = in_scope `extendInScopeSetList` fi_tvs axiom
+        , Just subst <- [tcUnifyTyWithTFs False in_scope1 (fi_rhs axiom) rhs_ty]
+        , let unsubstTvs = filter (notInSubst subst <&&> isTyVar) ax_tvs ]
+
+      buildClosedImprovementData
+          :: [CoAxBranch]
+          -> [(TyVarSet, ImprovementData)] -- also include the LHS tvs
+      buildClosedImprovementData axioms =
+          [ (ax_tv_set, (cab_lhs axiom, subst, unsubstTvs, in_scope1, Just axiom))
           | axiom <- axioms
-          , let ax_args = axiomLHS axiom
-                ax_rhs  = axiomRHS axiom
-                ax_tvs  = axiomTVs axiom
-                in_scope1 = in_scope `extendInScopeSetList` ax_tvs
-          , Just subst <- [tcUnifyTyWithTFs False in_scope1 ax_rhs rhs_ty]
-          , let notInSubst tv = not (tv `elemVarEnv` getTvSubstEnv subst)
-                unsubstTvs    = filter (notInSubst <&&> isTyVar) ax_tvs ]
+          , let ax_tvs  = cab_tvs axiom
+                ax_tv_set = mkVarSet ax_tvs
+                in_scope1 = in_scope `extendInScopeSetSet` ax_tv_set
+          , Just subst <- [tcUnifyTyWithTFs True in_scope1 (cab_rhs axiom) rhs_ty]
+          , let unsubstTvs = filter (notInSubst subst <&&> isTyVar) ax_tvs ]
                    -- The order of unsubstTvs is important; it must be
                    -- in telescope order e.g. (k:*) (a:k)
 
+      -- See Note [Prefer binding the left variable] in GHC.Core.Unify.
+      just_a_match :: TyVarSet -> ImprovementData
+                   -> Bool
+      just_a_match tvs (_, subst, _, _, _)
+        = isNullUFM (getTvSubstEnv subst `minusVarEnv` getUniqSet tvs)
+
       injImproveEqns :: [Bool]
-                     -> ([Type], Subst, [TyCoVar], Maybe CoAxBranch)
+                     -> ImprovementData
                      -> TcS [TypeEqn]
-      injImproveEqns inj_args (ax_args, subst, unsubstTvs, cabr)
+      injImproveEqns inj_args (ax_args, subst, unsubstTvs, in_scope, cabr)
         = do { subst <- instFlexiX subst unsubstTvs
                   -- If the current substitution bind [k -> *], and
                   -- one of the un-substituted tyvars is (a::k), we'd better
@@ -3082,7 +3104,9 @@ improve_top_fun_eqs fam_envs fam_tc args rhs_ty
                         -- NB: the ax_arg part is on the left
                         -- see Note [Improvement orientation]
                       | case cabr of
-                          Just cabr' -> apartnessCheck (substTys subst ax_args) cabr'
+                          Just cabr' -> apartnessCheck flattened_args cabr'
+                            where substed_args   = substTys subst ax_args
+                                  flattened_args = flattenTys in_scope substed_args
                           _          -> True
                       , (ax_arg, arg, True) <- zip3 ax_args args inj_args ] }
 
