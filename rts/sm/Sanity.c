@@ -737,6 +737,7 @@ checkSTACK (StgStack *stack)
     checkStackChunk(sp, stack_end);
 }
 
+/* See Note [TSO invariants] in TSO.h */
 void
 checkTSO(StgTSO *tso)
 {
@@ -750,13 +751,42 @@ checkTSO(StgTSO *tso)
            info == &stg_WHITEHOLE_info); // used to happen due to STM doing
                                          // lockTSO(), might not happen now
 
-    if (   tso->why_blocked == BlockedOnMVar
-        || tso->why_blocked == BlockedOnMVarRead
-        || tso->why_blocked == BlockedOnBlackHole
-        || tso->why_blocked == BlockedOnMsgThrowTo
-        || tso->why_blocked == NotBlocked
-        ) {
-        ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->block_info.closure));
+    switch (tso->why_blocked) {
+        case NotBlocked:
+            ASSERT(tso->block_info.closure == (StgClosure*) END_TSO_QUEUE);
+            break;
+        case BlockedOnMVar:
+        case BlockedOnMVarRead:
+            ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->block_info.closure));
+            ASSERT(get_itbl(tso->block_info.closure) == MVAR_CLEAN
+                    || get_itbl(tso->block_info.closure) == MVAR_DIRTY);
+            break;
+        case BlockedOnBlackHole:
+            ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->block_info.closure));
+            ASSERT(get_itbl(tso->block_info.closure) == &stg_MSG_BLACKHOLE_info);
+            break;
+        case BlockedOnRead:
+        case BlockedOnWrite:
+        case BlockedOnDelay:
+        case BlockedOnDoProc:
+            ASSERT(tso->block_info.closure == NULL);
+            break;
+        case BlockedOnSTM:
+            ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->block_info.closure));
+            ASSERT(tso->block_info.closure == (StgClosure*) END_TSO_QUEUE
+                    || get_itbl(tso->block_info.closure) == STM_AWOKEN);
+            break;
+        case BlockedOnCCall:
+        case BlockedOnCCall_Interruptible:
+            break;
+        case BlockedOnMsgThrowTo:
+            ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->block_info.closure));
+            ASSERT(get_itbl(tso->block_info.closure) == &stg_MSG_THROWTO_info);
+            break;
+        case ThreadMigrating:
+            break;
+        default:
+            barf("checkTSO: Invalid why_blocked %x", tso->why_blocked);
     }
 
     ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->bq));

@@ -318,14 +318,16 @@ start:
                                                            : END_TSO_QUEUE;
                         }
 
-                        // Terminates the run queue + this inner for-loop.
-                        tso->_link = END_TSO_QUEUE;
-                        tso->why_blocked = NotBlocked;
                         // save the StgAsyncIOResult in the
                         // stg_block_async_info stack frame, because
                         // the block_info field will be overwritten by
                         // pushOnRunQueue().
                         tso->stackobj->sp[1] = (W_)tso->block_info.async_result;
+
+                        tso->why_blocked = NotBlocked;
+                        tso->block_info.closure = (StgClosure *)END_TSO_QUEUE;
+                        // Terminates the run queue + this inner for-loop.
+                        tso->_link = END_TSO_QUEUE;
                         pushOnRunQueue(&MainCapability, tso);
                         break;
                     }

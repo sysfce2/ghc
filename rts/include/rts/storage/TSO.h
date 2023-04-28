@@ -289,8 +289,8 @@ void setTSOPrev (Capability *cap, StgTSO *tso, StgTSO *target);
 void dirty_STACK (Capability *cap, StgStack *stack);
 
 /* -----------------------------------------------------------------------------
-   Invariants:
-
+   Note [TSO invariants]
+   ~~~~~~~~~~~~~~~~~~~~~
    An active thread has the following properties:
 
       tso->stack < tso->sp < tso->stack+tso->stack_size
