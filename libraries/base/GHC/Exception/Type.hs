@@ -32,6 +32,8 @@ module GHC.Exception.Type
        , emptyExceptionContext
        , mergeExceptionContext
        , ExceptionWithContext(..)
+         -- * 'WhileHandling' annotations
+       , WhileHandling(..)
          -- * Arithmetic exceptions
        , ArithException(..)
        , divZeroException, overflowException, ratioZeroDenomException
@@ -220,6 +222,16 @@ instance Exception a => Exception (ExceptionWithContext a) where
         return (ExceptionWithContext (exceptionContext se) e)
     backtraceDesired (ExceptionWithContext _ e) = backtraceDesired e
     displayException = displayException . toException
+
+-- | An 'ExceptionAnnotation' applied by 'catch' and similar operations
+-- to exceptions thrown while handling another exception.
+--
+-- @since 4.19.0.0
+newtype WhileHandling = WhileHandling SomeException
+
+instance ExceptionAnnotation WhileHandling where
+    displayExceptionAnnotation (WhileHandling e) =
+        "While handling: " ++ displayException e
 
 -- |Arithmetic exceptions.
 data ArithException
