@@ -350,8 +350,9 @@ getMaskingState  = IO $ \s ->
                              _  -> MaskedInterruptible #)
 
 onException :: IO a -> IO b -> IO a
-onException io what = io `catchException` \e -> do _ <- what
-                                                   throwIO (e :: SomeException)
+onException io what = io `catchException` \e -> do
+    _ <- what
+    throwIO $ NoBacktrace (e :: SomeException)
 
 -- | Executes an IO computation with asynchronous
 -- exceptions /masked/.  That is, any thread which attempts to raise
