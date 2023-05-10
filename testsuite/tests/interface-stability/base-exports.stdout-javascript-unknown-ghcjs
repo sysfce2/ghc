@@ -6989,7 +6989,6 @@ module GHC.Float where
   castWord64ToDouble :: GHC.Word.Word64 -> Double
   ceilingDouble :: forall b. GHC.Real.Integral b => Double -> b
   ceilingFloat :: forall b. GHC.Real.Integral b => Float -> b
-  clamp :: GHC.Types.Int -> GHC.Types.Int -> GHC.Types.Int
   cosDouble :: Double -> Double
   cosFloat :: Float -> Float
   coshDouble :: Double -> Double
@@ -7004,9 +7003,6 @@ module GHC.Float where
   expFloat :: Float -> Float
   expm1Double :: Double -> Double
   expm1Float :: Float -> Float
-  expt :: GHC.Num.Integer.Integer -> GHC.Types.Int -> GHC.Num.Integer.Integer
-  expts :: GHC.Arr.Array GHC.Types.Int GHC.Num.Integer.Integer
-  expts10 :: GHC.Arr.Array GHC.Types.Int GHC.Num.Integer.Integer
   fabsDouble :: Double -> Double
   fabsFloat :: Float -> Float
   float2Double :: Float -> Double
@@ -7018,7 +7014,6 @@ module GHC.Float where
   formatRealFloatAlt :: forall a. RealFloat a => FFFormat -> GHC.Maybe.Maybe GHC.Types.Int -> GHC.Types.Bool -> a -> GHC.Base.String
   fromRat :: forall a. RealFloat a => GHC.Real.Rational -> a
   fromRat' :: forall a. RealFloat a => GHC.Real.Rational -> a
-  fromRat'' :: forall a. RealFloat a => GHC.Types.Int -> GHC.Types.Int -> GHC.Num.Integer.Integer -> GHC.Num.Integer.Integer -> a
   geDouble :: Double -> Double -> GHC.Types.Bool
   geFloat :: Float -> Float -> GHC.Types.Bool
   gtDouble :: Double -> Double -> GHC.Types.Bool
@@ -7047,9 +7042,6 @@ module GHC.Float where
   logFloat :: Float -> Float
   ltDouble :: Double -> Double -> GHC.Types.Bool
   ltFloat :: Float -> Float -> GHC.Types.Bool
-  maxExpt :: GHC.Types.Int
-  maxExpt10 :: GHC.Types.Int
-  minExpt :: GHC.Types.Int
   minusDouble :: Double -> Double -> Double
   minusFloat :: Float -> Float -> Float
   naturalToDouble# :: GHC.Num.Natural.Natural -> Double#
@@ -7058,8 +7050,6 @@ module GHC.Float where
   negateFloat :: Float -> Float
   plusDouble :: Double -> Double -> Double
   plusFloat :: Float -> Float -> Float
-  powerDouble :: Double -> Double -> Double
-  powerFloat :: Float -> Float -> Float
   properFractionDouble :: forall b. GHC.Real.Integral b => Double -> (b, Double)
   properFractionFloat :: forall b. GHC.Real.Integral b => Float -> (b, Float)
   rationalToDouble :: GHC.Num.Integer.Integer -> GHC.Num.Integer.Integer -> Double
@@ -7076,10 +7066,6 @@ module GHC.Float where
   sinhFloat :: Float -> Float
   sqrtDouble :: Double -> Double
   sqrtFloat :: Float -> Float
-  stgDoubleToWord64 :: Double# -> GHC.Prim.Word64#
-  stgFloatToWord32 :: Float# -> GHC.Prim.Word32#
-  stgWord32ToFloat :: GHC.Prim.Word32# -> Float#
-  stgWord64ToDouble :: GHC.Prim.Word64# -> Double#
   tanDouble :: Double -> Double
   tanFloat :: Float -> Float
   tanhDouble :: Double -> Double
@@ -7087,7 +7073,6 @@ module GHC.Float where
   timesDouble :: Double -> Double -> Double
   timesFloat :: Float -> Float -> Float
   truncateDouble :: forall b. GHC.Real.Integral b => Double -> b
-  truncateFloat :: forall b. GHC.Real.Integral b => Float -> b
   word2Double :: GHC.Types.Word -> Double
   word2Float :: GHC.Types.Word -> Float
 

@@ -6985,6 +6985,8 @@ module GHC.Float where
     log1pexp :: a -> a
     log1mexp :: a -> a
     {-# MINIMAL pi, exp, log, sin, cos, asin, acos, atan, sinh, cosh, asinh, acosh, atanh #-}
+  type FractionalExponentBase :: *
+  data FractionalExponentBase = Base2 | Base10
   type RealFloat :: * -> Constraint
   class (GHC.Real.RealFrac a, Floating a) => RealFloat a where
     floatRadix :: a -> GHC.Num.Integer.Integer
@@ -7002,6 +7004,8 @@ module GHC.Float where
     isIEEE :: a -> GHC.Types.Bool
     atan2 :: a -> a -> a
     {-# MINIMAL floatRadix, floatDigits, floatRange, decodeFloat, encodeFloat, isNaN, isInfinite, isDenormalized, isNegativeZero, isIEEE #-}
+  (^%^) :: forall a. GHC.Real.Integral a => GHC.Real.Rational -> a -> GHC.Real.Rational
+  (^^%^^) :: forall a. GHC.Real.Integral a => GHC.Real.Rational -> a -> GHC.Real.Rational
   acosDouble :: Double -> Double
   acosFloat :: Float -> Float
   acoshDouble :: Double -> Double
@@ -7083,12 +7087,15 @@ module GHC.Float where
   minExpt :: GHC.Types.Int
   minusDouble :: Double -> Double -> Double
   minusFloat :: Float -> Float -> Float
+  mkRationalWithExponentBase :: GHC.Real.Rational -> GHC.Num.Integer.Integer -> FractionalExponentBase -> GHC.Real.Rational
   naturalToDouble# :: GHC.Num.Natural.Natural -> Double#
   naturalToFloat# :: GHC.Num.Natural.Natural -> Float#
   negateDouble :: Double -> Double
   negateFloat :: Float -> Float
   plusDouble :: Double -> Double -> Double
   plusFloat :: Float -> Float -> Float
+  powImpl :: forall a b. (GHC.Num.Num a, GHC.Real.Integral b) => a -> b -> a
+  powImplAcc :: forall a b. (GHC.Num.Num a, GHC.Real.Integral b) => a -> b -> a -> a
   powerDouble :: Double -> Double -> Double
   powerFloat :: Float -> Float -> Float
   properFractionDouble :: forall b. GHC.Real.Integral b => Double -> (b, Double)
