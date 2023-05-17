@@ -94,7 +94,10 @@ test('RepPolyUnliftedNewtype', normal, compile,
 test('RepPolyUnsafeCoerce1', normal, compile, [''])
 test('RepPolyWildcardPattern', normal, compile_fail, [''])
 test('RepPolyWrappedVar', normal, compile_fail, [''])
-test('RepPolyWrappedVar2', normal, compile, [''])
+# js_skip: RepPolyWrappedVar2 coerces from AddrRep to IntRep, which have
+# different PrimReps in JS.
+# Came up in https://gitlab.haskell.org/ghc/ghc/-/merge_requests/10088#note_499218
+test('RepPolyWrappedVar2', [js_skip], compile, [''])
 test('UnliftedNewtypesCoerceFail', normal, compile_fail, [''])
 test('UnliftedNewtypesLevityBinder', normal, compile_fail, [''])
 
