@@ -245,7 +245,7 @@ import GHC.Types.Name.Ppr
 import GHC.Types.Name.Set (NonCaffySet)
 import GHC.Types.TyThing
 import GHC.Types.HpcInfo
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 import GHC.Utils.Fingerprint ( Fingerprint )
 import GHC.Utils.Panic
@@ -1457,15 +1457,15 @@ checkSafeImports tcg_env
         clearDiagnostics
 
         -- Check safe imports are correct
-        safePkgs <- mkUniqDSet <$> mapMaybeM checkSafe safeImps
+        safePkgs <- mkUniqSet <$> mapMaybeM checkSafe safeImps
         safeErrs <- getDiagnostics
         clearDiagnostics
 
         -- Check non-safe imports are correct if inferring safety
         -- See the Note [Safe Haskell Inference]
         (infErrs, infPkgs) <- case (safeInferOn dflags) of
-          False -> return (emptyMessages, emptyUniqDSet)
-          True -> do infPkgs <- mkUniqDSet <$> mapMaybeM checkSafe regImps
+          False -> return (emptyMessages, emptyUniqSet)
+          True -> do infPkgs <- mkUniqSet <$> mapMaybeM checkSafe regImps
                      infErrs <- getDiagnostics
                      clearDiagnostics
                      return (infErrs, infPkgs)
@@ -1521,7 +1521,7 @@ checkSafeImports tcg_env
     pkgTrustReqs dflags req inf infPassed | safeInferOn dflags
                                   && not (safeHaskellModeEnabled dflags) && infPassed
                                    = emptyImportAvails {
-                                       imp_trust_pkgs = req `unionUniqDSets` inf
+                                       imp_trust_pkgs = req `unionUniqSets` inf
                                    }
     pkgTrustReqs dflags _   _ _ | safeHaskell dflags == Sf_Unsafe
                          = emptyImportAvails
@@ -1545,7 +1545,7 @@ hscGetSafe hsc_env m l = runHsc hsc_env $ do
     (self, pkgs) <- hscCheckSafe' m l
     good         <- isEmptyMessages `fmap` getDiagnostics
     clearDiagnostics -- don't want them printed...
-    let pkgs' | Just p <- self = addOneToUniqDSet pkgs p
+    let pkgs' | Just p <- self = addOneToUniqSet pkgs p
               | otherwise      = pkgs
     return (good, pkgs')
 
@@ -1651,7 +1651,7 @@ hscCheckSafe' m l = do
 checkPkgTrust :: UnitIdSet -> Hsc ()
 checkPkgTrust pkgs = do
     hsc_env <- getHscEnv
-    let errors = foldr go emptyBag $ uniqDSetToList pkgs
+    let errors = foldr go emptyBag $ uniqSetToAscList pkgs
         state  = hsc_units hsc_env
         go pkg acc
             | unitIsTrusted $ unsafeLookupUnitId state pkg
@@ -1699,7 +1699,7 @@ markUnsafeInfer tcg_env whyUnsafe = do
       False -> return tcg_env
 
   where
-    wiped_trust   = (tcg_imports tcg_env) { imp_trust_pkgs = emptyUniqDSet }
+    wiped_trust   = (tcg_imports tcg_env) { imp_trust_pkgs = emptyUniqSet }
     pprMod        = ppr $ moduleName $ tcg_mod tcg_env
     whyUnsafe' df = vcat [ quotes pprMod <+> text "has been inferred as unsafe!"
                          , text "Reason:"
@@ -2060,7 +2060,7 @@ hscCompileCmmFile hsc_env original_filename filename output_filename = runHsc hs
                   in NoStubs `appendStubC` ip_init
               | otherwise     = NoStubs
         (_output_filename, (_stub_h_exists, stub_c_exists), _foreign_fps, _caf_infos)
-          <- codeOutput logger tmpfs llvm_config dflags (hsc_units hsc_env) cmm_mod output_filename no_loc foreign_stubs [] emptyUniqDSet
+          <- codeOutput logger tmpfs llvm_config dflags (hsc_units hsc_env) cmm_mod output_filename no_loc foreign_stubs [] emptyUniqSet
              rawCmms
         return stub_c_exists
   where

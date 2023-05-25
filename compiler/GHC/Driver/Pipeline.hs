@@ -108,7 +108,7 @@ import GHC.Types.Target
 import GHC.Types.SrcLoc
 import GHC.Types.SourceFile
 import GHC.Types.SourceError
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 import GHC.Unit
 import GHC.Unit.Env
@@ -410,8 +410,8 @@ link' logger tmpfs dflags unit_env batch_attempt_linking mHscMessager hpt
             home_mod_infos = eltsHpt hpt
 
             -- the packages we depend on
-            pkg_deps  = uniqDSetToList
-                          $ unionManyUniqDSets
+            pkg_deps  = uniqSetToAscList
+                          $ unionManyUniqSets
                           $ fmap (dep_direct_pkgs . mi_deps . hm_iface)
                           $ home_mod_infos
 

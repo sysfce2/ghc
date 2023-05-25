@@ -30,7 +30,7 @@ import GHC.Unit.Module.Imported
 import GHC.Unit.Module
 import GHC.Unit.Home
 import GHC.Unit.State
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 import GHC.Utils.Fingerprint
 import GHC.Utils.Binary
@@ -113,7 +113,7 @@ data Dependencies = Deps
 mkDependencies :: HomeUnit -> Module -> ImportAvails -> [Module] -> Dependencies
 mkDependencies home_unit mod imports plugin_mods =
   let (home_plugins, external_plugins) = partition (isHomeUnit home_unit . moduleUnit) plugin_mods
-      plugin_units = mkUniqDSet (map (toUnitId . moduleUnit) external_plugins)
+      plugin_units = mkUniqSet (map (toUnitId . moduleUnit) external_plugins)
       all_direct_mods = foldr (\mn m -> extendInstalledModuleEnv m mn (GWIB (moduleName mn) NotBoot))
                               (imp_direct_dep_mods imports)
                               (map (fmap toUnitId) home_plugins)
@@ -201,11 +201,11 @@ instance Binary Dependencies where
 noDependencies :: Dependencies
 noDependencies = Deps
   { dep_direct_mods  = mempty
-  , dep_direct_pkgs  = emptyUniqDSet
-  , dep_plugin_pkgs  = emptyUniqDSet
+  , dep_direct_pkgs  = emptyUniqSet
+  , dep_plugin_pkgs  = emptyUniqSet
   , dep_sig_mods     = []
   , dep_boot_mods    = mempty
-  , dep_trusted_pkgs = emptyUniqDSet
+  , dep_trusted_pkgs = emptyUniqSet
   , dep_orphs        = []
   , dep_finsts       = []
   }
@@ -225,7 +225,7 @@ pprDeps unit_state (Deps { dep_direct_mods = dmods
           text "boot module dependencies:"    <+> ppr_set ppr bmods,
           text "direct package dependencies:" <+> ppr_unitIdSet ppr pkgs,
           text "plugin package dependencies:" <+> ppr_unitIdSet ppr plgns,
-          if isEmptyUniqDSet tps
+          if isEmptyUniqSet tps
             then empty
             else text "trusted package dependencies:" <+> ppr_unitIdSet ppr tps,
           text "orphans:" <+> fsep (map ppr orphs),
@@ -239,7 +239,7 @@ pprDeps unit_state (Deps { dep_direct_mods = dmods
     ppr_set w = fsep . fmap w . Set.toAscList
 
     ppr_unitIdSet :: (UnitId -> SDoc) -> UnitIdSet -> SDoc
-    ppr_unitIdSet w = fsep . fmap w . sort . uniqDSetToList
+    ppr_unitIdSet w = fsep . fmap w . sort . uniqSetToAscList
 
 -- | Records modules for which changes may force recompilation of this module
 -- See wiki: https://gitlab.haskell.org/ghc/ghc/wikis/commentary/compiler/recompilation-avoidance

@@ -143,7 +143,7 @@ import GHC.Types.Id.Info( IdDetails(..) )
 import GHC.Types.Var.Env
 import GHC.Types.TypeEnv
 import GHC.Types.Unique.FM
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 import GHC.Types.Name
 import GHC.Types.Name.Env
 import GHC.Types.Name.Set
@@ -2933,7 +2933,7 @@ pprTcGblEnv (TcGblEnv { tcg_type_env  = type_env,
          , text "Dependent modules:" <+>
                 (ppr . sort . installedModuleEnvElts $ imp_direct_dep_mods imports)
          , text "Dependent packages:" <+>
-                ppr (uniqDSetToAscList $ imp_dep_direct_pkgs imports)]
+                ppr (uniqSetToAscList $ imp_dep_direct_pkgs imports)]
                 -- The use of sort is just to reduce unnecessary
                 -- wobbling in testsuite output
 

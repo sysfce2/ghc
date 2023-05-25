@@ -1362,7 +1362,7 @@ mergeDatabases logger = foldM merge (emptyUniqMap, emptyUniqMap) . zip [1..]
     merge (pkg_map, prec_map) (i, UnitDatabase db_path db) = do
       debugTraceMsg logger 2 $
           text "loading package database" <+> text db_path
-      forM_ (uniqDSetToList override_set) $ \pkg ->
+      forM_ (uniqSetToAscList override_set) $ \pkg ->
           debugTraceMsg logger 2 $
               text "package" <+> ppr pkg <+>
               text "overrides a previously defined package"
@@ -1375,7 +1375,7 @@ mergeDatabases logger = foldM merge (emptyUniqMap, emptyUniqMap) . zip [1..]
       -- ones that get overridden.  Compute this just to give some
       -- helpful debug messages at -v2
       override_set :: UnitIdSet
-      override_set = mkUniqDSet $ nonDetKeysUniqMap $ intersectUniqMap db_map pkg_map
+      override_set = mkUniqSet $ nonDetKeysUniqMap $ intersectUniqMap db_map pkg_map
 
       -- Now merge the sets together (NB: in case of duplicate,
       -- first argument preferred)
@@ -1687,7 +1687,7 @@ mkUnitState logger cfg = do
   let !state = UnitState
          { preloadUnits                 = dep_preload
          , explicitUnits                = explicit_pkgs
-         , homeUnitDepends              = uniqDSetToList home_unit_deps
+         , homeUnitDepends              = uniqSetToAscList home_unit_deps
          , unitInfoMap                  = pkg_db
          , preloadClosure               = emptyUniqSet
          , moduleNameProvidersMap       = mod_map
@@ -1701,14 +1701,14 @@ mkUnitState logger cfg = do
   return (state, raw_dbs)
 
 selectHptFlag :: UnitIdSet -> PackageFlag -> Bool
-selectHptFlag home_units (ExposePackage _ (UnitIdArg uid) _) | toUnitId uid `elementOfUniqDSet` home_units = True
+selectHptFlag home_units (ExposePackage _ (UnitIdArg uid) _) | toUnitId uid `elementOfUniqSet` home_units = True
 selectHptFlag _ _ = False
 
 selectHomeUnits :: UnitIdSet -> [PackageFlag] -> UnitIdSet
-selectHomeUnits home_units flags = foldl' go emptyUniqDSet flags
+selectHomeUnits home_units flags = foldl' go emptyUniqSet flags
   where
     go :: UnitIdSet -> PackageFlag -> UnitIdSet
-    go cur (ExposePackage _ (UnitIdArg uid) _) | toUnitId uid `elementOfUniqDSet` home_units = addOneToUniqDSet cur (toUnitId uid)
+    go cur (ExposePackage _ (UnitIdArg uid) _) | toUnitId uid `elementOfUniqSet` home_units = addOneToUniqSet cur (toUnitId uid)
     -- MP: This does not yet support thinning/renaming
     go cur _ = cur
 

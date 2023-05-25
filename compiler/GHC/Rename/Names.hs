@@ -72,7 +72,7 @@ import GHC.Types.Id
 import GHC.Types.HpcInfo
 import GHC.Types.PkgQual
 import GHC.Types.GREInfo (ConInfo(..))
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 import GHC.Unit
 import GHC.Unit.Module.Warnings
@@ -211,8 +211,8 @@ rnImports imports = do
     let merged_import_avail = clobberSourceImports imp_avails
     dflags <- getDynFlags
     let final_import_avail  =
-          merged_import_avail { imp_dep_direct_pkgs = mkUniqDSet (implicitPackageDeps dflags)
-                                                        `unionUniqDSets` imp_dep_direct_pkgs merged_import_avail}
+          merged_import_avail { imp_dep_direct_pkgs = mkUniqSet (implicitPackageDeps dflags)
+                                                        `unionUniqSets` imp_dep_direct_pkgs merged_import_avail}
     return (decls, rdr_env, final_import_avail, hpc_usage)
 
   where
@@ -534,7 +534,7 @@ calculateAvails home_unit other_home_units iface mod_safe' want_boot imported_by
 
       -- Trusted packages are a lot like orphans.
       trusted_pkgs | mod_safe' = dep_trusted_pkgs deps
-                   | otherwise = emptyUniqDSet
+                   | otherwise = emptyUniqSet
 
 
       pkg = moduleUnit (mi_module iface)
@@ -547,11 +547,11 @@ calculateAvails home_unit other_home_units iface mod_safe' want_boot imported_by
         | isHomeUnit home_unit pkg = ptrust
         | otherwise = False
 
-      dependent_pkgs = if toUnitId pkg `elementOfUniqDSet` other_home_units
-                        then emptyUniqDSet
-                        else unitUniqDSet ipkg
+      dependent_pkgs = if toUnitId pkg `elementOfUniqSet` other_home_units
+                        then emptyUniqSet
+                        else unitUniqSet ipkg
 
-      direct_mods = mkModDeps $ if toUnitId pkg `elementOfUniqDSet` other_home_units
+      direct_mods = mkModDeps $ if toUnitId pkg `elementOfUniqSet` other_home_units
                       then S.singleton (moduleUnitId imp_mod, (GWIB (moduleName imp_mod) want_boot))
                       else S.empty
 

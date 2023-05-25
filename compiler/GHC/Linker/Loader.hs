@@ -63,6 +63,7 @@ import GHC.Types.Name
 import GHC.Types.Name.Env
 import GHC.Types.SrcLoc
 import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 import GHC.Types.Unique.DFM
 
 import GHC.Utils.Outputable
@@ -156,7 +157,7 @@ emptyLoaderState = LoaderState
   --
   -- The linker's symbol table is populated with RTS symbols using an
   -- explicit list.  See rts/Linker.c for details.
-  where init_pkgs = unitUDFM rtsUnitId (LoadedPkgInfo rtsUnitId [] [] emptyUniqDSet)
+  where init_pkgs = unitUDFM rtsUnitId (LoadedPkgInfo rtsUnitId [] [] emptyUniqSet)
 
 extendLoadedEnv :: Interp -> [(Name,ForeignHValue)] -> IO ()
 extendLoadedEnv interp new_bindings =
@@ -222,12 +223,12 @@ loadDependencies interp hsc_env pls span needed_mods = do
    -- Link the packages and modules required
    pls1 <- loadPackages' interp hsc_env pkgs pls
    (pls2, succ) <- loadModuleLinkables interp hsc_env pls1 lnks
-   let this_pkgs_loaded = udfmRestrictKeys all_pkgs_loaded $ getUniqDSet trans_pkgs_needed
+   let this_pkgs_loaded = udfmRestrictKeys all_pkgs_loaded $ getUniqDSet $ mkUniqDSet $ nonDetEltsUniqSet trans_pkgs_needed
        all_pkgs_loaded = pkgs_loaded pls2
-       trans_pkgs_needed = unionManyUniqDSets (this_pkgs_needed : [ loaded_pkg_trans_deps pkg
-                                                                  | pkg_id <- uniqDSetToList this_pkgs_needed
-                                                                  , Just pkg <- [lookupUDFM all_pkgs_loaded pkg_id]
-                                                                  ])
+       trans_pkgs_needed = unionManyUniqSets (this_pkgs_needed : [ loaded_pkg_trans_deps pkg
+                                                                 | pkg_id <- uniqSetToAscList this_pkgs_needed
+                                                                 , Just pkg <- [lookupUDFM all_pkgs_loaded pkg_id]
+                                                                 ])
    return (pls2, succ, all_lnks, this_pkgs_loaded)
 
 
@@ -325,19 +326,19 @@ loadCmdLineLibs' :: Interp -> HscEnv -> LoaderState -> IO LoaderState
 loadCmdLineLibs' interp hsc_env pls = snd <$>
     foldM
       (\(done', pls') cur_uid -> load done' cur_uid pls')
-      (emptyUniqDSet, pls)
-      (uniqDSetToList $ hsc_all_home_unit_ids hsc_env)
+      (emptyUniqSet, pls)
+      (uniqSetToAscList $ hsc_all_home_unit_ids hsc_env)
 
   where
     load :: UnitIdSet -> UnitId -> LoaderState -> IO (UnitIdSet, LoaderState)
-    load done uid pls | uid `elementOfUniqDSet` done = return (done, pls)
+    load done uid pls | uid `elementOfUniqSet` done = return (done, pls)
     load done uid pls = do
       let hsc' = hscSetActiveUnitId uid hsc_env
       -- Load potential dependencies first
       (done', pls') <- foldM (\(done', pls') uid -> load done' uid pls') (done, pls)
                              (homeUnitDepends (hsc_units hsc'))
       pls'' <- loadCmdLineLibs'' interp hsc' pls'
-      return $ (addOneToUniqDSet done' uid, pls'')
+      return $ (addOneToUniqSet done' uid, pls'')
 
 loadCmdLineLibs''
   :: Interp
@@ -701,16 +702,16 @@ getLinkDeps hsc_env pls replace_osuf span mods
           -- if --make uses the oneShot code path (see MultiLayerModulesTH_* tests)
           if isOneShot (ghcMode dflags)
             then follow_deps (filterOut isInteractiveModule mods)
-                              emptyUniqDSet emptyUniqDSet;
+                              emptyUniqDSet emptyUniqSet;
             else do
               (pkgs, mmods) <- unzip <$> mapM get_mod_info all_home_mods
-              return (catMaybes mmods, unionManyUniqDSets (init_pkg_set : pkgs))
+              return (catMaybes mmods, unionManyUniqSets (init_pkg_set : pkgs))
 
       ; let
         -- 2.  Exclude ones already linked
         --      Main reason: avoid findModule calls in get_linkable
             (mods_needed, links_got) = partitionEithers (map split_mods mods_s)
-            pkgs_needed = eltsUDFM $ getUniqDSet pkgs_s `minusUDFM` pkgs_loaded pls
+            pkgs_needed = eltsUDFM $ getUniqDSet (mkUniqDSet $ uniqSetToAscList pkgs_s) `minusUDFM` pkgs_loaded pls
 
             split_mods mod =
                 let is_linked = findModuleLinkable_maybe (objs_loaded pls) mod <|> findModuleLinkable_maybe (bcos_loaded pls) mod
@@ -751,10 +752,10 @@ getLinkDeps hsc_env pls replace_osuf span mods
               in make_deps_loop (found_units, deps `Set.union` found_mods) (todo_boot_mods ++ nexts)
             Nothing ->
               let (ModNodeKeyWithUid _ uid) = nk
-              in make_deps_loop (addOneToUniqDSet found_units uid, found_mods) nexts
+              in make_deps_loop (addOneToUniqSet found_units uid, found_mods) nexts
 
     mkNk m = ModNodeKeyWithUid (GWIB (moduleName m) NotBoot) (moduleUnitId m)
-    (init_pkg_set, all_deps) = make_deps_loop (emptyUniqDSet, Set.empty) $ map mkNk (filterOut isInteractiveModule mods)
+    (init_pkg_set, all_deps) = make_deps_loop (emptyUniqSet, Set.empty) $ map mkNk (filterOut isInteractiveModule mods)
 
     all_home_mods = [with_uid | NodeKey_Module with_uid <- Set.toList all_deps]
 
@@ -814,12 +815,12 @@ getLinkDeps hsc_env pls replace_osuf span mods
             acc_mods'  = case hsc_home_unit_maybe hsc_env of
                           Nothing -> acc_mods
                           Just home_unit -> addListToUniqDSet acc_mods (mod : map (mkHomeModule home_unit) mod_deps)
-            acc_pkgs'  = addListToUniqDSet acc_pkgs (uniqDSetToList pkg_deps)
+            acc_pkgs'  = addListToUniqSet acc_pkgs (uniqSetToAscList pkg_deps)
 
           case hsc_home_unit_maybe hsc_env of
             Just home_unit | isHomeUnit home_unit pkg ->  follow_deps (mod_deps' ++ mods)
                                                                       acc_mods' acc_pkgs'
-            _ ->  follow_deps mods acc_mods (addOneToUniqDSet acc_pkgs' (toUnitId pkg))
+            _ ->  follow_deps mods acc_mods (addOneToUniqSet acc_pkgs' (toUnitId pkg))
         where
            msg = text "need to link module" <+> ppr mod <+>
                   text "due to use of Template Haskell"
@@ -1372,10 +1373,10 @@ loadPackages' interp hsc_env new_pks pls = do
              ; pkgs' <- link pkgs deps
                 -- Now link the package itself
              ; (hs_cls, extra_cls) <- loadPackage interp hsc_env pkg_cfg
-             ; let trans_deps = unionManyUniqDSets [ addOneToUniqDSet (loaded_pkg_trans_deps loaded_pkg_info) dep_pkg
-                                                   | dep_pkg <- deps
-                                                   , Just loaded_pkg_info <- pure (lookupUDFM pkgs' dep_pkg)
-                                                   ]
+             ; let trans_deps = unionManyUniqSets [ addOneToUniqSet (loaded_pkg_trans_deps loaded_pkg_info) dep_pkg
+                                                  | dep_pkg <- deps
+                                                  , Just loaded_pkg_info <- pure (lookupUDFM pkgs' dep_pkg)
+                                                  ]
              ; return (addToUDFM pkgs' new_pkg (LoadedPkgInfo new_pkg hs_cls extra_cls trans_deps)) }
 
         | otherwise

@@ -94,6 +94,7 @@ import GHC.Types.SourceFile
 import GHC.Types.SafeHaskell
 import GHC.Types.TypeEnv
 import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 import GHC.Types.SrcLoc
 import GHC.Types.TyThing
 import GHC.Types.PkgQual
@@ -504,7 +505,7 @@ loadInterface doc_str mod from
         -- overlapping instances.
         ; massertPpr
               ((isOneShot (ghcMode (hsc_dflags hsc_env)))
-                || not (moduleUnitId mod `elementOfUniqDSet` hsc_all_home_unit_ids hsc_env)
+                || not (moduleUnitId mod `elementOfUniqSet` hsc_all_home_unit_ids hsc_env)
                 || mod == gHC_PRIM)
                 (text "Attempting to load home package interface into the EPS" $$ ppr hug $$ doc_str $$ ppr mod $$ ppr (moduleUnitId mod))
         ; ignore_prags      <- goptM Opt_IgnoreInterfacePragmas

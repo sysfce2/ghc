@@ -94,6 +94,7 @@ import GHC.Prelude
 
 import GHC.Types.Unique
 import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 import GHC.Utils.Binary
 import GHC.Utils.Outputable
 import GHC.Data.FastString
@@ -540,7 +541,7 @@ pprUnitId (UnitId fs) = sdocOption sdocUnitIdForUser ($ fs)
 -- code for.
 type DefUnitId = Definite UnitId
 
-type UnitIdSet = UniqDSet UnitId
+type UnitIdSet = UniqSet UnitId
 
 unitIdString :: UnitId -> String
 unitIdString = unpackFS . unitIdFS

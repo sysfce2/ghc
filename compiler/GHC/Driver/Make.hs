@@ -107,7 +107,7 @@ import GHC.Types.SourceFile
 import GHC.Types.SourceError
 import GHC.Types.SrcLoc
 import GHC.Types.Unique.Map
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 import GHC.Types.PkgQual
 
 import GHC.Unit
@@ -491,7 +491,7 @@ load how_much = loadWithCache noIfaceCache how_much
 
 mkBatchMsg :: HscEnv -> Messager
 mkBatchMsg hsc_env =
-  if sizeUniqDSet (hsc_all_home_unit_ids hsc_env) > 1
+  if sizeUniqSet (hsc_all_home_unit_ids hsc_env) > 1
     -- This also displays what unit each module is from.
     then batchMultiMsg
     else batchMsg
@@ -1745,16 +1745,16 @@ downsweep hsc_env old_summaries excl_mods allow_dup_roots
 checkHomeUnitsClosed ::  UnitEnv -> UnitIdSet -> [(UnitId, UnitId)] -> [DriverMessages]
 -- Fast path, trivially closed.
 checkHomeUnitsClosed ue home_id_set home_imp_ids
-  | sizeUniqDSet home_id_set == 1 = []
+  | sizeUniqSet home_id_set == 1 = []
   | otherwise =
-  let res = foldr (\ids acc -> unionUniqDSets acc $ loop ids) emptyUniqDSet home_imp_ids
+  let res = foldr (\ids acc -> unionUniqSets acc $ loop ids) emptyUniqSet home_imp_ids
   -- Now check whether everything which transitively depends on a home_unit is actually a home_unit
   -- These units are the ones which we need to load as home packages but failed to do for some reason,
   -- it's a bug in the tool invoking GHC.
-      bad_unit_ids = res `minusUniqDSet` home_id_set
-  in if isEmptyUniqDSet bad_unit_ids
+      bad_unit_ids = res `minusUniqSet` home_id_set
+  in if isEmptyUniqSet bad_unit_ids
         then []
-        else [singleMessage $ mkPlainErrorMsgEnvelope rootLoc $ DriverHomePackagesNotClosed (uniqDSetToAscList bad_unit_ids)]
+        else [singleMessage $ mkPlainErrorMsgEnvelope rootLoc $ DriverHomePackagesNotClosed (uniqSetToAscList bad_unit_ids)]
 
   where
     rootLoc = mkGeneralSrcSpan (fsLit "<command line>")
@@ -1768,21 +1768,21 @@ checkHomeUnitsClosed ue home_id_set home_imp_ids
         Nothing -> pprPanic "uid not found" (ppr uid)
         Just ui ->
           let depends = unitDepends ui
-              home_depends  = mkUniqDSet depends `intersectUniqDSets` home_id_set
-              other_depends = mkUniqDSet depends `minusUniqDSet` home_id_set
+              home_depends  = mkUniqSet depends `intersectUniqSets` home_id_set
+              other_depends = mkUniqSet depends `minusUniqSet` home_id_set
           in
             -- Case 1: The unit directly depends on a home_id
-            if not (isEmptyUniqDSet home_depends)
+            if not (isEmptyUniqSet home_depends)
               then
                 let res :: UnitIdSet
-                    res = foldr (\ide acc -> acc `unionUniqDSets` loop (from_uid, ide)) emptyUniqDSet $ uniqDSetToList other_depends
-                in addOneToUniqDSet res uid
+                    res = foldr (\ide acc -> acc `unionUniqSets` loop (from_uid, ide)) emptyUniqSet $ uniqSetToAscList other_depends
+                in addOneToUniqSet res uid
              -- Case 2: Check the rest of the dependencies, and then see if any of them depended on
               else
-                let res = foldr (\ide acc -> acc `unionUniqDSets` loop (from_uid, ide)) emptyUniqDSet $ uniqDSetToList other_depends
+                let res = foldr (\ide acc -> acc `unionUniqSets` loop (from_uid, ide)) emptyUniqSet $ uniqSetToAscList other_depends
                 in
-                  if not (isEmptyUniqDSet res)
-                    then addOneToUniqDSet res uid
+                  if not (isEmptyUniqSet res)
+                    then addOneToUniqSet res uid
                     else res
 
 -- | Update the every ModSummary that is depended on

@@ -26,7 +26,6 @@ import GHC.Utils.Monad
 import GHC.Types.Name
 import GHC.Types.Name.Set ( NameSet, allUses )
 import GHC.Types.Unique.Set
-import GHC.Types.Unique.DSet
 
 import GHC.Unit
 import GHC.Unit.Env
@@ -256,7 +255,7 @@ mk_mod_usage_info uc home_unit home_unit_ids this_mod direct_imports used_names
     --     (need to recompile if its export list changes: export_fprint)
     mkUsage :: Module -> ModIface -> Maybe Usage
     mkUsage mod iface
-      | not $ toUnitId (moduleUnit mod) `elementOfUniqDSet` home_unit_ids
+      | not $ toUnitId (moduleUnit mod) `elementOfUniqSet` home_unit_ids
       = Just $ UsagePackageModule{ usg_mod      = mod,
                                    usg_mod_hash = mod_hash,
                                    usg_safe     = imp_safe }

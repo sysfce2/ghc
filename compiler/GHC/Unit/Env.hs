@@ -81,7 +81,7 @@ import GHC.Utils.Misc (HasDebugCallStack)
 import GHC.Driver.DynFlags
 import GHC.Utils.Outputable
 import GHC.Utils.Panic (pprPanic)
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 import GHC.Unit.Module.ModIface
 import GHC.Unit.Module
 import qualified Data.Set as Set
@@ -341,7 +341,7 @@ unitEnv_lookup :: UnitEnvGraphKey -> UnitEnvGraph v -> v
 unitEnv_lookup u env = fromJust $ unitEnv_lookup_maybe u env
 
 unitEnv_keys :: UnitEnvGraph v -> UnitIdSet
-unitEnv_keys env = mkUniqDSet $ Map.keys (unitEnv_graph env)
+unitEnv_keys env = mkUniqSet $ Map.keys (unitEnv_graph env)
 
 unitEnv_elts :: UnitEnvGraph v -> [(UnitEnvGraphKey, v)]
 unitEnv_elts env = Map.toList (unitEnv_graph env)

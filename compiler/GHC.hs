@@ -395,7 +395,7 @@ import GHC.Types.Name.Ppr
 import GHC.Types.TypeEnv
 import GHC.Types.BreakInfo
 import GHC.Types.PkgQual
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 import GHC.Unit
 import GHC.Unit.Env
@@ -603,7 +603,7 @@ setSessionDynFlags dflags0 = do
   logger <- getLogger
   dflags <- checkNewDynFlags logger dflags0
   let all_uids = hsc_all_home_unit_ids hsc_env
-  case uniqDSetToList all_uids of
+  case uniqSetToAscList all_uids of
     [uid] -> do
       setUnitDynFlagsNoCheck uid dflags
       modifySession (hscUpdateLoggerFlags . hscSetActiveUnitId (homeUnitId_ dflags))
@@ -1379,7 +1379,7 @@ data ModuleInfo = ModuleInfo {
 -- | Request information about a loaded 'Module'
 getModuleInfo :: GhcMonad m => Module -> m (Maybe ModuleInfo)  -- XXX: Maybe X
 getModuleInfo mdl = withSession $ \hsc_env -> do
-  if moduleUnitId mdl `elementOfUniqDSet` hsc_all_home_unit_ids hsc_env
+  if moduleUnitId mdl `elementOfUniqSet` hsc_all_home_unit_ids hsc_env
         then liftIO $ getHomeModuleInfo hsc_env mdl
         else liftIO $ getPackageModuleInfo hsc_env mdl
 

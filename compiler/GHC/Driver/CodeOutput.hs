@@ -56,7 +56,7 @@ import GHC.Types.SrcLoc
 import GHC.Types.CostCentre
 import GHC.Types.ForeignStubs
 import GHC.Types.Unique.Supply ( mkSplitUniqSupply )
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 import System.Directory
 import System.FilePath
@@ -164,7 +164,7 @@ outputC :: Logger
         -> IO a
 outputC logger dflags filenm cmm_stream unit_deps =
   withTiming logger (text "C codegen") (\a -> seq a () {- FIXME -}) $ do
-    let pkg_names = map unitIdString (uniqDSetToAscList unit_deps)
+    let pkg_names = map unitIdString (uniqSetToAscList unit_deps)
     doOutput filenm $ \ h -> do
       hPutStr h ("/* GHC_PACKAGES " ++ unwords pkg_names ++ "\n*/\n")
       hPutStr h "#include \"Stg.h\"\n"

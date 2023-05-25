@@ -106,7 +106,7 @@ import GHC.Utils.Misc
 import qualified GHC.LanguageExtensions as LangExt
 import GHC.Data.Bag (unitBag)
 import qualified GHC.Data.Strict as Strict
-import GHC.Types.Unique.DSet
+import GHC.Types.Unique.Set
 
 -- Haskell Libraries
 import System.Console.Haskeline as Haskeline
@@ -562,7 +562,7 @@ interactiveUI config srcs maybe_exprs = do
            -- Set to True because Prelude is implicitly imported.
            impDecl@ImportDecl{ideclExt=ext} -> impDecl{ideclExt = ext{ideclImplicit=True}}
    hsc_env <- GHC.getSession
-   let in_multi = sizeUniqDSet (hsc_all_home_unit_ids hsc_env) > 1
+   let in_multi = sizeUniqSet (hsc_all_home_unit_ids hsc_env) > 1
    empty_cache <- liftIO newIfaceCache
    startGHCi (runGHCi srcs maybe_exprs)
         GHCiState{ progname           = default_progname,
@@ -2569,15 +2569,15 @@ isSafeModule m = do
     -- print info to user...
     liftIO $ putStrLn $ "Trust type is (Module: " ++ trust ++ ", Package: " ++ pkg ++ ")"
     liftIO $ putStrLn $ "Package Trust: " ++ (if packageTrustOn dflags then "On" else "Off")
-    when (not $ isEmptyUniqDSet good)
+    when (not $ isEmptyUniqSet good)
          (liftIO $ putStrLn $ "Trusted package dependencies (trusted): " ++
-                        (intercalate ", " $ map (showPpr dflags) (uniqDSetToList good)))
-    case msafe && isEmptyUniqDSet bad of
+                        (intercalate ", " $ map (showPpr dflags) (uniqSetToAscList good)))
+    case msafe && isEmptyUniqSet bad of
         True -> liftIO $ putStrLn $ mname ++ " is trusted!"
         False -> do
-            when (not $ isEmptyUniqDSet bad)
+            when (not $ isEmptyUniqSet bad)
                  (liftIO $ putStrLn $ "Trusted package dependencies (untrusted): "
-                            ++ (intercalate ", " $ map (showPpr dflags) (uniqDSetToList bad)))
+                            ++ (intercalate ", " $ map (showPpr dflags) (uniqSetToAscList bad)))
             liftIO $ putStrLn $ mname ++ " is NOT trusted!"
 
   where
@@ -2587,8 +2587,8 @@ isSafeModule m = do
         | isHomeModule (hsc_home_unit hsc_env) md = True
         | otherwise = unitIsTrusted $ unsafeLookupUnit (hsc_units hsc_env) (moduleUnit md)
 
-    tallyPkgs hsc_env deps | not (packageTrustOn dflags) = (emptyUniqDSet, emptyUniqDSet)
-                          | otherwise = partitionUniqDSet part deps
+    tallyPkgs hsc_env deps | not (packageTrustOn dflags) = (emptyUniqSet, emptyUniqSet)
+                           | otherwise = partitionUniqSet part deps
         where part pkg   = unitIsTrusted $ unsafeLookupUnitId unit_state pkg
               unit_state = hsc_units hsc_env
               dflags     = hsc_dflags hsc_env

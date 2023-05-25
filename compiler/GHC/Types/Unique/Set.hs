@@ -44,6 +44,7 @@ module GHC.Types.Unique.Set (
         nonDetEltsUniqSet,
         nonDetKeysUniqSet,
         nonDetStrictFoldUniqSet,
+        uniqSetToAscList,
     ) where
 
 import GHC.Prelude
@@ -55,6 +56,8 @@ import Data.Coerce
 import GHC.Utils.Outputable
 import Data.Data
 import qualified Data.Semigroup as Semi
+import Data.List (sort)
+import GHC.Utils.Binary
 
 -- Note [UniqSet invariant]
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -159,6 +162,9 @@ lookupUniqSet_Directly (UniqSet s) k = lookupUFM_Directly s k
 nonDetEltsUniqSet :: UniqSet elt -> [elt]
 nonDetEltsUniqSet = nonDetEltsUFM . getUniqSet'
 
+uniqSetToAscList :: Ord elt => UniqSet elt -> [elt]
+uniqSetToAscList = sort . nonDetEltsUniqSet
+
 -- See Note [Deterministic UniqFM] to learn about nondeterminism.
 -- If you use this please provide a justification why it doesn't introduce
 -- nondeterminism.
@@ -179,6 +185,10 @@ mapUniqSet f = mkUniqSet . map f . nonDetEltsUniqSet
 -- uniques.
 instance Eq (UniqSet a) where
   UniqSet a == UniqSet b = equalKeysUFM a b
+
+instance (Uniquable a, Ord a, Binary a) => Binary (UniqSet a) where
+  put_ bh = put_ bh . uniqSetToAscList
+  get  bh = mkUniqSet <$> get bh
 
 getUniqSet :: UniqSet a -> UniqFM a a
 getUniqSet = getUniqSet'
