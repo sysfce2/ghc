@@ -2593,7 +2593,8 @@ xFlagsDeps = [
   flagSpec "BinaryLiterals"                   LangExt.BinaryLiterals,
   flagSpec "CApiFFI"                          LangExt.CApiFFI,
   flagSpec "CPP"                              LangExt.Cpp,
-  flagSpec "CUSKs"                            LangExt.CUSKs,
+  depFlagSpec "CUSKs"                         LangExt.CUSKs
+    "Use standalone kind signatures instead",
   flagSpec "ConstrainedClassMethods"          LangExt.ConstrainedClassMethods,
   flagSpec "ConstraintKinds"                  LangExt.ConstraintKinds,
   flagSpec "DataKinds"                        LangExt.DataKinds,

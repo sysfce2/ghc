@@ -20,7 +20,6 @@ docs:
          NondecreasingIndentation
          TraditionalRecordSyntax
          StarIsType
-         CUSKs
          FieldSelectors
 extensible fields:
 
