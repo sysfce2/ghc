@@ -163,6 +163,7 @@ toolTargets = [ binary
               , ghci
               , ghcPkg  -- # executable
               -- , haddock -- # depends on ghc library
+              , hegg
               , hsc2hs  -- # executable
               , hpc
               , hpcBin  -- # executable
