@@ -422,6 +422,9 @@ simplAuxBind env bndr new_rhs
   -- This is safe because it's only used for auxiliary bindings, which
   -- have no NOLINE pragmas, nor RULEs
   | exprIsTrivial new_rhs  -- Short-cut for let x = y in ...
+    || case (idOccInfo bndr) of
+          OneOcc{ occ_n_br = 1, occ_in_lam = NotInsideLam } -> True
+          _                                                 -> False
   = return ( emptyFloats env
            , case new_rhs of
                 Coercion co -> extendCvSubst env bndr co
@@ -3528,7 +3531,7 @@ knownCon env scrut dc_floats dc dc_ty_args dc_args bndr bs rhs cont
              -- Nevertheless we must keep it if the case-binder is alive,
              -- because it may be used in the con_app.  See Note [knownCon occ info]
            ; (floats1, env2) <- simplAuxBind env' b' arg  -- arg satisfies let-can-float invariant
-           ; (floats2, env3)  <- bind_args env2 bs' args
+           ; (floats2, env3) <- bind_args env2 bs' args
            ; return (floats1 `addFloats` floats2, env3) }
 
     bind_args _ _ _ =
