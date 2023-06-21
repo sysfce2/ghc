@@ -512,6 +512,12 @@ do_beta_by_substitution bndr rhs
   = exprIsTrivial rhs                   -- Can duplicate
     || safe_to_inline (idOccInfo bndr)  -- Occurs at most once
 
+do_case_elim :: CoreExpr -> Id -> [Id] -> Bool
+do_case_elim scrut case_bndr alt_bndrs
+  =  exprIsHNF scrut
+  && safe_to_inline (idOccInfo case_bndr)
+  && all isDeadBinder alt_bndrs
+
 -------------------
 simple_out_bind :: TopLevelFlag
                 -> SimpleOptEnv
@@ -1290,13 +1296,17 @@ exprIsConApp_maybe ise@(ISE in_scope id_unf) expr
          in go subst' (float:floats) expr cont
 
     go subst floats (Case scrut b _ [Alt con vars expr]) cont
+       | do_case_elim scrut' b vars
+       = go (extend subst b scrut') floats expr cont
+       | otherwise
        = let
-          scrut'           = subst_expr subst scrut
           (subst', b')     = subst_bndr subst b
           (subst'', vars') = subst_bndrs subst' vars
           float            = FloatCase scrut' b' con vars'
          in
            go subst'' (float:floats) expr cont
+       where
+          scrut'           = subst_expr subst scrut
 
     go (Right sub) floats (Var v) cont
        = go (Left (getSubstInScope sub))

@@ -969,7 +969,9 @@ completeBind env bind_cxt old_bndr new_bndr new_rhs
                 -- substitution will happen, since we are going to discard the binding
 
         else -- Keep the binding; do cast worker/wrapper
-             -- pprTrace "Binding" (ppr new_bndr <+> ppr new_unfolding) $
+             simplTrace "completeBind" (vcat [ text "bndrs" <+> ppr old_bndr <+> ppr new_bndr
+                                             , text "occ" <+> ppr occ_info
+                                             , text "eta_rhs" <+> ppr eta_rhs ]) $
              tryCastWorkerWrapper env bind_cxt old_bndr occ_info new_bndr_w_info eta_rhs }
 
 addLetBndrInfo :: OutId -> ArityType -> Unfolding -> OutId

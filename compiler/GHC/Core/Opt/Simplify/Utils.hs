@@ -1539,7 +1539,7 @@ postInlineUnconditionally env bind_cxt bndr occ_info rhs
 
         -> n_br < 100  -- See Note [Suppress exponential blowup]
 
-           && smallEnoughToInline uf_opts unfolding     -- Small enough to dup
+           && (smallEnoughToInline uf_opts unfolding)     -- Small enough to dup
                         -- ToDo: consider discount on smallEnoughToInline if int_cxt is true
                         --
                         -- NB: Do NOT inline arbitrarily big things, even if occ_n_br=1
