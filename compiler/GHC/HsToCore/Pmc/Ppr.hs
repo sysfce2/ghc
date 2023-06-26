@@ -53,7 +53,7 @@ pprUncovered nabla vas
       -- precedence
       | [_] <- vas   = topPrec
       | otherwise    = appPrec
-    (vas',_nabla')   = representIds vas nabla
+    (vas',nabla')    = representIds vas nabla
     ppr_action       = mapM (pprPmVar init_prec) vas'
     (vec, renamings) = runPmPpr nabla' ppr_action
     refuts           = prettifyRefuts nabla' renamings
