@@ -55,8 +55,8 @@ pprUncovered nabla vas
       | otherwise    = appPrec
     (vas',_nabla')   = representIds vas nabla
     ppr_action       = mapM (pprPmVar init_prec) vas'
-    (vec, renamings) = runPmPpr nabla ppr_action
-    refuts           = prettifyRefuts nabla renamings
+    (vec, renamings) = runPmPpr nabla' ppr_action
+    refuts           = prettifyRefuts nabla' renamings
 
 -- | Output refutable shapes of a variable in the form of @var is not one of {2,
 -- Nothing, 3}@. Will never print more than 3 refutable shapes, the tail is

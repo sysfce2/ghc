@@ -348,3 +348,4 @@ cmpDeBruijnType _ _ = EQ
 -- ROMES:TODO: DEBRUIJN ORDERING ON COERCIONS!!!
 cmpDeBruijnCoercion :: DeBruijn Coercion -> DeBruijn Coercion -> Ordering
 cmpDeBruijnCoercion _ _ = EQ
+
