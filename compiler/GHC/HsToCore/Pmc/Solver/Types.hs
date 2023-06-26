@@ -359,7 +359,7 @@ trvVarInfo f nabla@MkNabla{ nabla_tm_st = ts@TmSt{ts_facts = env} } x
 -- ROMES:TODO: Document
 -- | Lookup the refutable patterns, i.e. the pattern alt cons that certainly can't happen??
 -- ROMES:TODO: ClassId?
-lookupRefuts :: Nabla -> Id -> [PmAltCon]
+lookupRefuts :: Nabla -> ClassId -> [PmAltCon]
 -- Unfortunately we need the extra bit of polymorphism and the unfortunate
 -- duplication of lookupVarInfo here.
 lookupRefuts MkNabla{ nabla_tm_st = ts } x =
@@ -371,7 +371,7 @@ isDataConSolution _                                             = False
 
 -- @lookupSolution nabla x@ picks a single solution ('vi_pos') of @x@ from
 -- possibly many, preferring 'RealDataCon' solutions whenever possible.
-lookupSolution :: Nabla -> Id -> Maybe PmAltConApp
+lookupSolution :: Nabla -> ClassId -> Maybe PmAltConApp
 lookupSolution nabla x = case vi_pos (lookupVarInfo (nabla_tm_st nabla) x) of
   []                                         -> Nothing
   pos@(x:_)
