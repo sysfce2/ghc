@@ -3685,7 +3685,7 @@ mkDupableContWithDmds env _
   | isNothing (isDataConId_maybe (ai_fun fun))
   , thumbsUpPlanA cont  -- See point (3) of Note [Duplicating join points]
   = -- Use Plan A of Note [Duplicating StrictArg]
-    pprTrace "Using plan A" (ppr (ai_fun fun) $$ text "args" <+> ppr (ai_args fun) $$ text "cont" <+> ppr cont) $
+--    pprTrace "Using plan A" (ppr (ai_fun fun) $$ text "args" <+> ppr (ai_args fun) $$ text "cont" <+> ppr cont) $
     do { let (_ : dmds) = ai_dmds fun
        ; (floats1, cont')  <- mkDupableContWithDmds env dmds cont
                               -- Use the demands from the function to add the right
