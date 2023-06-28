@@ -13,8 +13,6 @@ module GHC.Core.Opt.Simplify.Iteration ( simplTopBinds, simplExpr, simplImpRules
 
 import GHC.Prelude
 
-import GHC.Platform
-
 import GHC.Driver.Flags
 
 import GHC.Core
@@ -45,7 +43,7 @@ import GHC.Core.Opt.Arity ( ArityType, exprArity, arityTypeBotSigs_maybe
                           , pushCoTyArg, pushCoValArg, exprIsDeadEnd
                           , typeArity, arityTypeArity, etaExpandAT )
 import GHC.Core.SimpleOpt ( exprIsConApp_maybe, joinPointBinding_maybe, joinPointBindings_maybe )
-import GHC.Core.FVs     ( mkRuleInfo )
+import GHC.Core.FVs     ( mkRuleInfo, exprsFreeIds )
 import GHC.Core.Rules   ( lookupRule, getRules )
 import GHC.Core.Multiplicity
 
@@ -60,11 +58,12 @@ import GHC.Types.Unique ( hasKey )
 import GHC.Types.Basic
 import GHC.Types.Tickish
 import GHC.Types.Var    ( isTyCoVar )
+import GHC.Types.Var.Set
 import GHC.Builtin.PrimOps ( PrimOp (SeqOp) )
 import GHC.Builtin.Types.Prim( realWorldStatePrimTy )
 import GHC.Builtin.Names( runRWKey )
 
-import GHC.Data.Maybe   ( isNothing, orElse )
+import GHC.Data.Maybe   ( isNothing, isJust, orElse )
 import GHC.Data.FastString
 import GHC.Unit.Module ( moduleName )
 import GHC.Utils.Outputable
@@ -399,7 +398,8 @@ simplJoinBind env is_rec cont old_bndr new_bndr rhs rhs_se
         ; completeBind env (BC_Join is_rec cont) old_bndr new_bndr rhs' }
 
 --------------------------
-simplAuxBind :: SimplEnv
+simplAuxBind :: String
+             -> SimplEnv
              -> InId            -- Old binder; not a JoinId
              -> OutExpr         -- Simplified RHS
              -> SimplM (SimplFloats, SimplEnv)
@@ -411,7 +411,7 @@ simplAuxBind :: SimplEnv
 --
 -- Precondition: rhs satisfies the let-can-float invariant
 
-simplAuxBind env bndr new_rhs
+simplAuxBind _str env bndr new_rhs
   | assertPpr (isId bndr && not (isJoinId bndr)) (ppr bndr) $
     isDeadBinder bndr   -- Not uncommon; e.g. case (a,b) of c { (p,q) -> p }
   = return (emptyFloats env, env)    --  Here c is dead, and we avoid
@@ -423,7 +423,8 @@ simplAuxBind env bndr new_rhs
   -- have no NOLINE pragmas, nor RULEs
   | exprIsTrivial new_rhs  -- Short-cut for let x = y in ...
     || case (idOccInfo bndr) of
-          OneOcc{ occ_n_br = 1, occ_in_lam = NotInsideLam } -> True
+          OneOcc{ occ_n_br = 1, occ_in_lam = NotInsideLam } -> -- pprTrace ("simplAuxBind:"++_str) (ppr bndr <+> equals <+> ppr new_rhs) $
+                                                               True
           _                                                 -> False
   = return ( emptyFloats env
            , case new_rhs of
@@ -590,11 +591,10 @@ Note [Concrete types] in GHC.Tc.Utils.Concrete.
 -}
 
 tryCastWorkerWrapper :: SimplEnv -> BindContext
-                     -> InId -> OccInfo
-                     -> OutId -> OutExpr
+                     -> InId -> OutId -> OutExpr
                      -> SimplM (SimplFloats, SimplEnv)
 -- See Note [Cast worker/wrapper]
-tryCastWorkerWrapper env bind_cxt old_bndr occ_info bndr (Cast rhs co)
+tryCastWorkerWrapper env bind_cxt old_bndr bndr (Cast rhs co)
   | BC_Let top_lvl is_rec <- bind_cxt  -- Not join points
   , not (isDFunId bndr) -- nor DFuns; cast w/w is no help, and we can't transform
                         --            a DFunUnfolding in mk_worker_unfolding
@@ -620,7 +620,7 @@ tryCastWorkerWrapper env bind_cxt old_bndr occ_info bndr (Cast rhs co)
 
                triv_rhs = Cast (Var work_id_w_unf) co
 
-        ; if postInlineUnconditionally env bind_cxt bndr occ_info triv_rhs
+        ; if postInlineUnconditionally env bind_cxt old_bndr bndr triv_rhs
              -- Almost always True, because the RHS is trivial
              -- In that case we want to eliminate the binding fast
              -- We conservatively use postInlineUnconditionally so that we
@@ -663,7 +663,7 @@ tryCastWorkerWrapper env bind_cxt old_bndr occ_info bndr (Cast rhs co)
              | isStableSource src -> return (unf { uf_tmpl = mkCast unf_rhs (mkSymCo co) })
            _ -> mkLetUnfolding uf_opts top_lvl VanillaSrc work_id work_rhs
 
-tryCastWorkerWrapper env _ _ _ bndr rhs  -- All other bindings
+tryCastWorkerWrapper env _ _ bndr rhs  -- All other bindings
   = do { traceSmpl "tcww:no" (vcat [ text "bndr:" <+> ppr bndr
                                    , text "rhs:" <+> ppr rhs ])
         ; return (mkFloatBind env (NonRec bndr rhs)) }
@@ -942,7 +942,6 @@ completeBind env bind_cxt old_bndr new_bndr new_rhs
  = assert (isId new_bndr) $
    do { let old_info = idInfo old_bndr
             old_unf  = realUnfoldingInfo old_info
-            occ_info = occInfo old_info
 
          -- Do eta-expansion on the RHS of the binding
          -- See Note [Eta-expanding at let bindings] in GHC.Core.Opt.Simplify.Utils
@@ -955,7 +954,7 @@ completeBind env bind_cxt old_bndr new_bndr new_rhs
       ; let new_bndr_w_info = addLetBndrInfo new_bndr new_arity new_unfolding
         -- See Note [In-scope set as a substitution]
 
-      ; if postInlineUnconditionally env bind_cxt new_bndr_w_info occ_info eta_rhs
+      ; if postInlineUnconditionally env bind_cxt old_bndr new_bndr_w_info eta_rhs
 
         then -- Inline and discard the binding
              do  { tick (PostInlineUnconditionally old_bndr)
@@ -970,9 +969,8 @@ completeBind env bind_cxt old_bndr new_bndr new_rhs
 
         else -- Keep the binding; do cast worker/wrapper
              simplTrace "completeBind" (vcat [ text "bndrs" <+> ppr old_bndr <+> ppr new_bndr
-                                             , text "occ" <+> ppr occ_info
                                              , text "eta_rhs" <+> ppr eta_rhs ]) $
-             tryCastWorkerWrapper env bind_cxt old_bndr occ_info new_bndr_w_info eta_rhs }
+             tryCastWorkerWrapper env bind_cxt old_bndr new_bndr_w_info eta_rhs }
 
 addLetBndrInfo :: OutId -> ArityType -> Unfolding -> OutId
 addLetBndrInfo new_bndr new_arity_type new_unf
@@ -2965,7 +2963,7 @@ rebuildCase env scrut case_bndr alts cont
   where
     simple_rhs env wfloats case_bndr_rhs bs rhs =
       assert (null bs) $
-      do { (floats1, env') <- simplAuxBind env case_bndr case_bndr_rhs
+      do { (floats1, env') <- simplAuxBind "rebuildCase" env case_bndr case_bndr_rhs
              -- scrut is a constructor application,
              -- hence satisfies let-can-float invariant
          ; (floats2, expr') <- simplExprF env' rhs cont
@@ -3032,7 +3030,7 @@ rebuildCase env scrut case_bndr alts@[Alt _ bndrs rhs] cont
   | all_dead_bndrs
   , doCaseToLet scrut case_bndr
   = do { tick (CaseElim case_bndr)
-       ; (floats1, env')  <- simplAuxBind env case_bndr scrut
+       ; (floats1, env')  <- simplAuxBind "rebuildCaseAlt1" env case_bndr scrut
        ; (floats2, expr') <- simplExprF env' rhs cont
        ; return (floats1 `addFloats` floats2, expr') }
 
@@ -3245,7 +3243,6 @@ simplAlts env0 scrut case_bndr alts cont'
           --     See Note [Shadowing in prepareAlts] in GHC.Core.Opt.Simplify.Utils
 
         ; alts' <- mapM (simplAlt alt_env' (Just scrut') imposs_deflt_cons case_bndr' cont') in_alts
---      ; pprTrace "simplAlts" (ppr case_bndr $$ ppr alts $$ ppr cont') $ return ()
 
         ; let alts_ty' = contResultType cont'
         -- See Note [Avoiding space leaks in OutType]
@@ -3532,7 +3529,7 @@ knownCon env scrut dc_floats dc dc_ty_args dc_args bndr bs rhs cont
              -- occur in the RHS; and simplAuxBind may therefore discard it.
              -- Nevertheless we must keep it if the case-binder is alive,
              -- because it may be used in the con_app.  See Note [knownCon occ info]
-           ; (floats1, env2) <- simplAuxBind env' b' arg  -- arg satisfies let-can-float invariant
+           ; (floats1, env2) <- simplAuxBind "knownCon" env' b' arg  -- arg satisfies let-can-float invariant
            ; (floats2, env3) <- bind_args env2 bs' args
            ; return (floats1 `addFloats` floats2, env3) }
 
@@ -3558,7 +3555,7 @@ knownCon env scrut dc_floats dc dc_ty_args dc_args bndr bs rhs cont
                                  ; let con_app = Var (dataConWorkId dc)
                                                  `mkTyApps` dc_ty_args
                                                  `mkApps`   dc_args
-                                 ; simplAuxBind env bndr con_app }
+                                 ; simplAuxBind "case-bndr" env bndr con_app }
 
 -------------------
 missingAlt :: SimplEnv -> Id -> [InAlt] -> SimplCont
@@ -3688,6 +3685,7 @@ mkDupableContWithDmds env _
   | isNothing (isDataConId_maybe (ai_fun fun))
   , thumbsUpPlanA cont  -- See point (3) of Note [Duplicating join points]
   = -- Use Plan A of Note [Duplicating StrictArg]
+    pprTrace "Using plan A" (ppr (ai_fun fun) $$ text "args" <+> ppr (ai_args fun) $$ text "cont" <+> ppr cont) $
     do { let (_ : dmds) = ai_dmds fun
        ; (floats1, cont')  <- mkDupableContWithDmds env dmds cont
                               -- Use the demands from the function to add the right
@@ -3711,14 +3709,14 @@ mkDupableContWithDmds env _
        ; (floats, join_rhs) <- rebuildCall env' (addValArgTo fun (Var arg_bndr) fun_ty) cont
        ; mkDupableStrictBind env' arg_bndr (wrapFloats floats join_rhs) rhs_ty }
   where
+    thumbsUpPlanA (StrictBind {})              = True
+    thumbsUpPlanA (Stop {})                    = True
     thumbsUpPlanA (StrictArg {})               = False
+    thumbsUpPlanA (Select {})                  = False
     thumbsUpPlanA (CastIt _ k)                 = thumbsUpPlanA k
     thumbsUpPlanA (TickIt _ k)                 = thumbsUpPlanA k
     thumbsUpPlanA (ApplyToVal { sc_cont = k }) = thumbsUpPlanA k
     thumbsUpPlanA (ApplyToTy  { sc_cont = k }) = thumbsUpPlanA k
-    thumbsUpPlanA (Select {})                  = True
-    thumbsUpPlanA (StrictBind {})              = True
-    thumbsUpPlanA (Stop {})                    = True
 
 mkDupableContWithDmds env dmds
     (ApplyToTy { sc_cont = cont, sc_arg_ty = arg_ty, sc_hole_ty = hole_ty })
@@ -3779,8 +3777,7 @@ mkDupableContWithDmds env _
         -- NB: we don't use alt_env further; it has the substEnv for
         --     the alternatives, and we don't want that
 
-        ; let platform = sePlatform env
-        ; (join_floats, alts'') <- mapAccumLM (mkDupableAlt platform case_bndr')
+        ; (join_floats, alts'') <- mapAccumLM (mkDupableAlt env case_bndr')
                                               emptyJoinFloats alts'
 
         ; let all_floats = floats `addJoinFloats` join_floats
@@ -3821,11 +3818,11 @@ mkDupableStrictBind env arg_bndr join_rhs res_ty
                             , sc_cont   = mkBoringStop res_ty
                             } ) }
 
-mkDupableAlt :: Platform -> OutId
+mkDupableAlt :: SimplEnv -> OutId
              -> JoinFloats -> OutAlt
              -> SimplM (JoinFloats, OutAlt)
-mkDupableAlt _platform case_bndr jfloats (Alt con alt_bndrs alt_rhs_in)
-  | exprIsTrivial alt_rhs_in   -- See point (2) of Note [Duplicating join points]
+mkDupableAlt env case_bndr jfloats (Alt con alt_bndrs alt_rhs_in)
+  | ok_to_dup_alt case_bndr alt_bndrs alt_rhs_in   -- See point (2) of Note [Duplicating join points]
   = return (jfloats, Alt con alt_bndrs alt_rhs_in)
 
   | otherwise
@@ -3856,7 +3853,7 @@ mkDupableAlt _platform case_bndr jfloats (Alt con alt_bndrs alt_rhs_in)
               filtered_binders = map fst abstracted_binders
               -- We want to make any binder with an evaldUnfolding strict in the rhs.
               -- See Note [Call-by-value for worker args] (which also applies to join points)
-              (rhs_with_seqs) = mkStrictFieldSeqs abstracted_binders alt_rhs_in
+              rhs_with_seqs = mkStrictFieldSeqs abstracted_binders alt_rhs_in
 
               final_args = varsToCoreExprs filtered_binders
                            -- Note [Join point abstraction]
@@ -3874,13 +3871,27 @@ mkDupableAlt _platform case_bndr jfloats (Alt con alt_bndrs alt_rhs_in)
               join_rhs   = mkLams (map zapIdUnfolding final_bndrs) rhs_with_seqs
 
         ; join_bndr <- newJoinId filtered_binders rhs_ty'
-
-        ; let join_call = mkApps (Var join_bndr) final_args
+        ; let join_bndr_w_unf = join_bndr `setIdUnfolding`
+                                mkUnfolding uf_opts VanillaSrc False False join_rhs Nothing
+              uf_opts   = seUnfoldingOpts env
+              join_call = mkApps (Var join_bndr) final_args
               alt'      = Alt con alt_bndrs join_call
 
-        ; return ( jfloats `addJoinFlts` unitJoinFloat (NonRec join_bndr join_rhs)
+        ; return ( jfloats `addJoinFlts` unitJoinFloat (NonRec join_bndr_w_unf join_rhs)
                  , alt') }
                 -- See Note [Duplicated env]
+
+ok_to_dup_alt :: OutId -> [OutVar] -> OutExpr -> Bool
+ok_to_dup_alt case_bndr alt_bndrs alt_rhs
+  | (Var v, args) <- collectArgs alt_rhs
+  , all exprIsTrivial args
+  = if isJust (isDataConId_maybe v)
+    then exprsFreeIds args `subVarSet` bndr_set
+    else True
+  | otherwise
+  = False
+  where
+    bndr_set = mkVarSet (case_bndr : alt_bndrs)
 
 {-
 Note [Fusing case continuations]
@@ -3927,7 +3938,7 @@ inlining join points.   Consider
 
 Here the join-point RHS is very small, just a constructor
 application (K x y).  So we might inline it to get
-    case (case v of        )
+    case (case v of          )
          (     p1 -> K f x1  ) of
          (     p2 -> K f x2  )
          (     p3 -> K f x3  )
@@ -3982,7 +3993,7 @@ the join point only when the RHS is
 * a constructor application? or
 * just non-trivial?
 Currently, a bit ad-hoc, but we definitely want to retain the join
-point for data constructors in mkDupalbleALt (point 2); that is the
+point for data constructors in mkDupableALt (point 2); that is the
 whole point of #19996 described above.
 
 Historical Note [Case binders and join points]
@@ -4247,10 +4258,18 @@ simplLetUnfolding env bind_cxt id new_rhs rhs_ty arity unf
   = simplStableUnfolding env bind_cxt id rhs_ty arity unf
   | isExitJoinId id
   = return noUnfolding -- See Note [Do not inline exit join points] in GHC.Core.Opt.Exitify
+  | isJoinId id
+  , too_many_occs (idOccInfo id)
+  = return noUnfolding
   | otherwise
   = -- Otherwise, we end up retaining all the SimpleEnv
     let !opts = seUnfoldingOpts env
     in mkLetUnfolding opts (bindContextLevel bind_cxt) VanillaSrc id new_rhs
+  where
+    too_many_occs (ManyOccs {})             = True
+    too_many_occs (OneOcc { occ_n_br = n }) = n > 4
+    too_many_occs IAmDead                   = False
+    too_many_occs (IAmALoopBreaker {})      = False
 
 -------------------
 mkLetUnfolding :: UnfoldingOpts -> TopLevelFlag -> UnfoldingSource
