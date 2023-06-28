@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns        #-}
 
@@ -914,15 +915,19 @@ addCoreCt nabla x e = do
       | Just (in_scope, _empty_floats@[], dc, _arg_tys, args)
             <- exprIsConApp_maybe in_scope_env e
       = data_con_app x in_scope dc args
-      -- See Note [Detecting pattern synonym applications in expressions]
-      | Var y <- e, Nothing <- isDataConId_maybe (eclassMatchId x nabla) -- RM:TODO: can we lookup in this nabla or should we get the one from the StateT somehow?
-      -- We don't consider DataCons flexible variables
-      = modifyT (\nabla -> let (yid, nabla') = representId y nabla
-                            in addVarCt nabla' x yid)
       | otherwise
-      -- Any other expression. Try to find other uses of a semantically
-      -- equivalent expression and represent them by the same variable!
-      = equate_with_similar_expr x e
+      = do
+        nabla' <- get
+        if
+          -- See Note [Detecting pattern synonym applications in expressions]
+          | Var y <- e, Nothing <- isDataConId_maybe (eclassMatchId x nabla')
+          -- We don't consider DataCons flexible variables
+          -> modifyT (\nabla -> let (yid, nabla') = representId y nabla
+                                in addVarCt nabla' x yid)
+          | otherwise
+          -- Any other expression. Try to find other uses of a semantically
+          -- equivalent expression and represent them by the same variable!
+          -> equate_with_similar_expr x e
       where
         expr_ty       = exprType e
         expr_in_scope = mkInScopeSet (exprFreeVars e)
@@ -2137,7 +2142,7 @@ updateVarInfo :: Functor f => ClassId -> (VarInfo -> f VarInfo) -> Nabla -> f Na
 -- Update the data at class @xid@ using lenses and the monadic action @go@
 updateVarInfo xid f nabla@MkNabla{ nabla_tm_st = ts@TmSt{ ts_facts=eg } } = (\eg' -> nabla{ nabla_tm_st = ts{ts_facts = eg'} }) <$> (_class xid . _data) f eg
 
-eclassMatchId :: ClassId -> Nabla -> Id
+eclassMatchId :: HasCallStack => ClassId -> Nabla -> Id
 eclassMatchId cid = vi_id . (^. _class cid . _data) . (ts_facts . nabla_tm_st)
 
 eclassType :: ClassId -> Nabla -> Type
