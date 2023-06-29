@@ -1126,12 +1126,17 @@ mkUnivCo prov role ty1 ty2
 --   a kind of @t1 ~ t2@ becomes the kind @t2 ~ t1@.
 mkSymCo :: Coercion -> Coercion
 
--- Do a few simple optimizations, but don't bother pushing occurrences
--- of symmetry to the leaves; the optimizer will take care of that.
-mkSymCo co | isReflCo co          = co
-mkSymCo    (SymCo co)             = co
-mkSymCo    (SubCo (SymCo co))     = SubCo co
-mkSymCo co                        = SymCo co
+-- Do a few simple optimizations, mainly to expose the underlying
+-- constructors to other 'mk' functions.  E.g.
+--   mkInstCo (mkSymCo (ForAllCo ...)) ty
+-- We want to push the SymCo inside the ForallCo, so that we can instantiate
+-- This can make a big difference.  E.g without coercion optimisation, GHC.Read
+-- totally explodes; but when we push Sym inside ForAll, it's fine.
+mkSymCo co | isReflCo co       = co
+mkSymCo (SymCo co)             = co
+mkSymCo (SubCo (SymCo co))     = SubCo co
+mkSymCo (ForAllCo tcv kco co)  = ForAllCo tcv (mkSymCo kco) (mkSymCo co)
+mkSymCo co                     = SymCo co
 
 -- | Create a new 'Coercion' by composing the two given 'Coercion's transitively.
 --   (co1 ; co2)

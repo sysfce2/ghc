@@ -74,6 +74,7 @@ import GHC.Core.Type hiding     ( substTy, substTyVar, substTyVarBndr, substCo
                                 , extendTvSubst, extendCvSubst )
 import qualified GHC.Core.Coercion as Coercion
 import GHC.Core.Coercion hiding ( substCo, substCoVar, substCoVarBndr )
+import GHC.Core.Coercion.Opt( OptCoercionOpts(..) )
 import GHC.Platform ( Platform )
 import GHC.Types.Basic
 import GHC.Utils.Monad
@@ -616,7 +617,11 @@ setInScopeFromE.
 
 ---------------------
 zapSubstEnv :: SimplEnv -> SimplEnv
-zapSubstEnv env = env {seTvSubst = emptyVarEnv, seCvSubst = emptyVarEnv, seIdSubst = emptyVarEnv}
+zapSubstEnv env@(SimplEnv { seMode = mode })
+  = env { seTvSubst = emptyVarEnv, seCvSubst = emptyVarEnv, seIdSubst = emptyVarEnv
+        , seMode = mode { sm_co_opt_opts = OptCoercionOpts False } }
+    -- Zapping coercion optimisation here saves a /lot/ in T18223;
+    -- reduces compiled time allocation by more than 50%
 
 setSubstEnv :: SimplEnv -> TvSubstEnv -> CvSubstEnv -> SimplIdSubst -> SimplEnv
 setSubstEnv env tvs cvs ids = env { seTvSubst = tvs, seCvSubst = cvs, seIdSubst = ids }
