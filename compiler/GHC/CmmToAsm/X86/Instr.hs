@@ -400,6 +400,7 @@ regUsageOfInstr platform instr
     SHL    _ imm dst    -> usageRM imm dst
     SAR    _ imm dst    -> usageRM imm dst
     SHR    _ imm dst    -> usageRM imm dst
+    SHRD   _ imm dst1 dst2 -> usageRMM imm dst1 dst2
     BT     _ _   src    -> mkRUR (use_R src [])
 
     PUSH   _ op         -> mkRUR (use_R op [])
