@@ -249,6 +249,7 @@ data Instr
         | SHL         Format Operand{-amount-} Operand
         | SAR         Format Operand{-amount-} Operand
         | SHR         Format Operand{-amount-} Operand
+        | SHRD        Format Operand{-amount-} Operand Operand
 
         | BT          Format Imm Operand
         | NOP
