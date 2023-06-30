@@ -625,17 +625,18 @@ iselExpr64 (CmmMachOp (MO_Mul _) [e1,e2]) = do
    RegCode64 code1 r1hi r1lo <- iselExpr64 e1
    RegCode64 code2 r2hi r2lo <- iselExpr64 e2
    Reg64 rhi rlo <- getNewReg64
+   Reg64 rhi' rlo' <- getNewReg64
    let
         code =  code1 `appOL`
                 code2 `appOL`
-                toOL [ MOV  II32 (OpReg r1lo) (OpReg eax),
-                       MOV  II32 (OpReg r2lo) (OpReg edx),
+                toOL [ MOV  II32 (OpReg r1lo) (OpReg rlo'),
+                       MOV  II32 (OpReg r2lo) (OpReg rhi'),
                        MOV  II32 (OpReg r1hi) (OpReg rhi),
-                       IMUL II32 (OpReg edx) (OpReg rhi),
+                       IMUL II32 (OpReg rhi') (OpReg rhi),
                        MOV  II32 (OpReg r2hi) (OpReg rlo),
-                       IMUL II32 (OpReg eax) (OpReg rlo),
+                       IMUL II32 (OpReg rlo') (OpReg rlo),
                        ADD  II32 (OpReg rlo) (OpReg rhi),
-                       MUL2 II32 (OpReg edx),
+                       MUL2 II32 (OpReg rhi'),
                        ADD  II32 (OpReg edx) (OpReg rhi),
                        MOV  II32 (OpReg eax) (OpReg rlo)
                      ]
