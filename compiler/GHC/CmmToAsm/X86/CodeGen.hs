@@ -613,7 +613,7 @@ iselExpr64 (CmmMachOp (MO_SS_Conv W32 W64) [expr]) = do
 iselExpr64 expr
    = do
       platform <- getPlatform
-      pprPanic "iselExpr64(i386)" (pdoc platform expr)
+      pprPanic "iselExpr64(i386)" (pdoc platform expr <+> text (show expr))
 
 
 --------------------------------------------------------------------------------
