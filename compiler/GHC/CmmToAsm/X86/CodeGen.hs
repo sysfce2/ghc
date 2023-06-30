@@ -705,6 +705,60 @@ iselExpr64 (CmmMachOp (MO_U_Shr _) [e1,e2]) = do
                      ]
    return (RegCode64 code rhi rlo)
 
+iselExpr64 (CmmMachOp (MO_And _) [e1,e2]) = do
+   RegCode64 code1 r1hi r1lo <- iselExpr64 e1
+   RegCode64 code2 r2hi r2lo <- iselExpr64 e2
+   Reg64 rhi rlo <- getNewReg64
+   let
+        code =  code1 `appOL`
+                code2 `appOL`
+                toOL [ MOV II32 (OpReg r1lo) (OpReg rlo),
+                       MOV II32 (OpReg r1hi) (OpReg rhi),
+                       AND II32 (OpReg r2lo) (OpReg rlo),
+                       AND II32 (OpReg r2hi) (OpReg rhi)
+                     ]
+   return (RegCode64 code rhi rlo)
+
+iselExpr64 (CmmMachOp (MO_Or _) [e1,e2]) = do
+   RegCode64 code1 r1hi r1lo <- iselExpr64 e1
+   RegCode64 code2 r2hi r2lo <- iselExpr64 e2
+   Reg64 rhi rlo <- getNewReg64
+   let
+        code =  code1 `appOL`
+                code2 `appOL`
+                toOL [ MOV II32 (OpReg r1lo) (OpReg rlo),
+                       MOV II32 (OpReg r1hi) (OpReg rhi),
+                       OR  II32 (OpReg r2lo) (OpReg rlo),
+                       OR  II32 (OpReg r2hi) (OpReg rhi)
+                     ]
+   return (RegCode64 code rhi rlo)
+
+iselExpr64 (CmmMachOp (MO_Xor _) [e1,e2]) = do
+   RegCode64 code1 r1hi r1lo <- iselExpr64 e1
+   RegCode64 code2 r2hi r2lo <- iselExpr64 e2
+   Reg64 rhi rlo <- getNewReg64
+   let
+        code =  code1 `appOL`
+                code2 `appOL`
+                toOL [ MOV II32 (OpReg r1lo) (OpReg rlo),
+                       MOV II32 (OpReg r1hi) (OpReg rhi),
+                       XOR II32 (OpReg r2lo) (OpReg rlo),
+                       XOR II32 (OpReg r2hi) (OpReg rhi)
+                     ]
+   return (RegCode64 code rhi rlo)
+
+iselExpr64 (CmmMachOp (MO_Not _) [e1]) = do
+   RegCode64 code1 r1hi r1lo <- iselExpr64 e1
+   Reg64 rhi rlo <- getNewReg64
+   let
+        code =  code1 `appOL`
+                toOL [ MOV II32 (OpReg r1lo) (OpReg rlo),
+                       MOV II32 (OpReg r1hi) (OpReg rhi),
+                       NOT II32 (OpReg rlo),
+                       NOT II32 (OpReg rhi)
+                     ]
+   return (RegCode64 code rhi rlo)
+
 iselExpr64 expr
    = do
       platform <- getPlatform
