@@ -610,6 +610,17 @@ iselExpr64 (CmmMachOp (MO_SS_Conv W32 W64) [expr]) = do
                           r_dst_hi
                           r_dst_lo
 
+iselExpr64 (CmmMachOp (MO_S_Neg _) [expr]) = do
+   RegCode64 code rhi rlo <- iselExpr64 expr
+   Reg64 rohi rolo <- getNewReg64
+   let
+        ocode = code `appOL`
+                toOL [ MOV II32 (OpReg rlo) (OpReg rolo), 
+                       XOR II32 (OpReg rohi) (OpReg rohi),
+                       NEGI II32 (OpReg rolo),
+                       SBB II32 (OpReg rhi) (OpReg rohi) ]
+   return (RegCode64 ocode rohi rolo)
+
 iselExpr64 expr
    = do
       platform <- getPlatform
