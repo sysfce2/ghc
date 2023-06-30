@@ -52,6 +52,7 @@ initStgToCmmConfig dflags mod = StgToCmmConfig
   , stgToCmmDoTagCheck    = gopt Opt_DoTagInferenceChecks  dflags
   -- backend flags
   , stgToCmmAllowBigArith             = not ncg || platformArch platform == ArchWasm32 || platformArch platform == ArchX86
+  , stgToCmmAllowBigQuot              = not ncg || platformArch platform == ArchWasm32
   , stgToCmmAllowQuotRemInstr         = ncg  && (x86ish || ppc)
   , stgToCmmAllowQuotRem2             = (ncg && (x86ish || ppc)) || llvm
   , stgToCmmAllowExtendedAddSubInstrs = (ncg && (x86ish || ppc)) || llvm
