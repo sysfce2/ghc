@@ -570,6 +570,7 @@ patchRegsOfInstr instr env
     SHL  fmt imm dst     -> patch1 (SHL fmt imm) dst
     SAR  fmt imm dst     -> patch1 (SAR fmt imm) dst
     SHR  fmt imm dst     -> patch1 (SHR fmt imm) dst
+    SHRD fmt imm dst1 dst2 -> patch2 (SHRD fmt imm) dst1 dst2
     BT   fmt imm src     -> patch1 (BT  fmt imm) src
     TEST fmt src dst     -> patch2 (TEST fmt) src dst
     CMP  fmt src dst     -> patch2 (CMP  fmt) src dst
