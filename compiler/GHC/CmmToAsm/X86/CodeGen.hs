@@ -646,7 +646,8 @@ iselExpr64 (CmmMachOp (MO_Shl _) [e1,e2]) = do
    RegCode64 code1 r1hi r1lo <- iselExpr64 e1
    (r2, code2) <- getSomeReg e2
    Reg64 rhi rlo <- getNewReg64
-   b <- newBlockId
+   lbl1 <- newBlockId
+   lbl2 <- newBlockId
    let
         code =  code1 `appOL`
                 code2 `appOL`
@@ -656,11 +657,13 @@ iselExpr64 (CmmMachOp (MO_Shl _) [e1,e2]) = do
                        SHLD II32 (OpReg ecx) (OpReg rlo) (OpReg rhi),
                        SAL II32 (OpReg ecx) (OpReg rlo),
                        TEST II32 (OpImm (ImmInt 32)) (OpReg ecx),
-                       JXX EQQ b,
+                       JXX EQQ lbl2,
+                       JXX ALWAYS lbl1,
+                       NEWBLOCK lbl1,
                        MOV II32 (OpReg rlo) (OpReg rhi),
                        XOR II32 (OpReg rlo) (OpReg rlo),
-                       JXX ALWAYS b,
-                       NEWBLOCK b
+                       JXX ALWAYS lbl2,
+                       NEWBLOCK lbl2
                      ]
    return (RegCode64 code rhi rlo)
 
@@ -668,7 +671,8 @@ iselExpr64 (CmmMachOp (MO_S_Shr _) [e1,e2]) = do
    RegCode64 code1 r1hi r1lo <- iselExpr64 e1
    (r2, code2) <- getSomeReg e2
    Reg64 rhi rlo <- getNewReg64
-   b <- newBlockId
+   lbl1 <- newBlockId
+   lbl2 <- newBlockId
    let
         code =  code1 `appOL`
                 code2 `appOL`
@@ -678,11 +682,13 @@ iselExpr64 (CmmMachOp (MO_S_Shr _) [e1,e2]) = do
                        SHRD II32 (OpReg ecx) (OpReg rhi) (OpReg rlo),
                        SAR II32 (OpReg ecx) (OpReg rhi),
                        TEST II32 (OpImm (ImmInt 32)) (OpReg ecx),
-                       JXX EQQ b,
+                       JXX EQQ lbl2,
+                       JXX ALWAYS lbl1,
+                       NEWBLOCK lbl1,
                        MOV II32 (OpReg rhi) (OpReg rlo),
                        SAR II32 (OpImm (ImmInt 31)) (OpReg rhi),
-                       JXX ALWAYS b,
-                       NEWBLOCK b
+                       JXX ALWAYS lbl2,
+                       NEWBLOCK lbl2
                      ]
    return (RegCode64 code rhi rlo)
 
@@ -690,7 +696,8 @@ iselExpr64 (CmmMachOp (MO_U_Shr _) [e1,e2]) = do
    RegCode64 code1 r1hi r1lo <- iselExpr64 e1
    (r2, code2) <- getSomeReg e2
    Reg64 rhi rlo <- getNewReg64
-   b <- newBlockId
+   lbl1 <- newBlockId
+   lbl2 <- newBlockId
    let
         code =  code1 `appOL`
                 code2 `appOL`
@@ -700,11 +707,13 @@ iselExpr64 (CmmMachOp (MO_U_Shr _) [e1,e2]) = do
                        SHRD II32 (OpReg ecx) (OpReg rhi) (OpReg rlo),
                        SHR II32 (OpReg ecx) (OpReg rhi),
                        TEST II32 (OpImm (ImmInt 32)) (OpReg ecx),
-                       JXX EQQ b,
+                       JXX EQQ lbl2,
+                       JXX ALWAYS lbl1,
+                       NEWBLOCK lbl1,
                        MOV II32 (OpReg rhi) (OpReg rlo),
                        XOR II32 (OpReg rhi) (OpReg rhi),
-                       JXX ALWAYS b,
-                       NEWBLOCK b
+                       JXX ALWAYS lbl2,
+                       NEWBLOCK lbl2
                      ]
    return (RegCode64 code rhi rlo)
 
