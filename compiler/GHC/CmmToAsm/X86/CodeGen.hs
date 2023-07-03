@@ -837,6 +837,11 @@ getRegister' _ is32Bit (CmmMachOp (MO_SS_Conv W64 W32) [x])
   RegCode64 code _rhi rlo <- iselExpr64 x
   return $ Fixed II32 rlo code
 
+getRegister' _ is32Bit (CmmMachOp (MO_UU_Conv W64 W8) [x])
+ | is32Bit = do
+  RegCode64 code _rhi rlo <- iselExpr64 x
+  return $ Fixed II8 rlo code
+
 getRegister' _ _ (CmmLit lit@(CmmFloat f w)) =
   float_const_sse2  where
   float_const_sse2
@@ -1525,6 +1530,7 @@ getAmode e = do
       CmmLit lit
          | is32BitLit platform lit
          -> return (Amode (ImmAddr (litToImm lit) 0) nilOL)
+
       -- Literal with offsets too big (> 32 bits) fails during the linking phase
       -- (#15570). We already handled valid literals above so we don't have to
       -- test anything here.
@@ -1912,8 +1918,25 @@ condIntCode' platform cond x y = do
 --------------------------------------------------------------------------------
 condFltCode :: Cond -> CmmExpr -> CmmExpr -> NatM CondCode
 
-condFltCode cond x y
-  =  condFltCode_sse2
+-- Larger-than-native (64-bit ops on 32-bit platforms)
+condFltCode cond x y = do
+  platform <- getPlatform
+  if target32Bit platform && isFloat64 (cmmExprType platform x)
+  then panic "condFLtCode 64-bit on 32-bit platform"
+--     RegCode64 code1 r1hi r1lo <- iselExpr64 x
+--     RegCode64 code2 r2hi r2lo <- iselExpr64 y
+--     tmp <- getNewRegNat II32
+--     let
+--           code = code1 `appOL`
+--                  code2 `appOL`
+--                  toOL [ FLD FF32 (OpReg r2lo) (OpReg tmp),
+--                         FLD FF32 (OpReg tmp) (OpReg r1lo),
+--                         MOV II32 (OpReg r2hi) (OpReg tmp),
+--                         SBB II32 (OpReg r1hi) (OpReg tmp)
+--                       ]
+--                     
+--     return (CondCode False cond code)
+  else condFltCode_sse2
   where
 
 
