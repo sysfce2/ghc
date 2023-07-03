@@ -1522,7 +1522,9 @@ getAmode e = do
          , is_label lit
          -> return (Amode (AddrBaseIndex EABaseRip EAIndexNone (litToImm lit)) nilOL)
 
-      CmmLit litsnoc
+      CmmLit lit
+         | is32BitLit platform lit
+         -> return (Amode (ImmAddr (litToImm lit) 0) nilOL)
       -- Literal with offsets too big (> 32 bits) fails during the linking phase
       -- (#15570). We already handled valid literals above so we don't have to
       -- test anything here.
