@@ -842,7 +842,14 @@ getRegister' _ is32Bit (CmmMachOp (MO_SS_Conv W64 W32) [x])
 getRegister' _ is32Bit (CmmMachOp (MO_UU_Conv W64 W8) [x])
  | is32Bit = do
   RegCode64 code _rhi rlo <- iselExpr64 x
-  return $ Fixed II8 rlo code
+  ro <- getNewRegNat II8
+  return $ Fixed II8 ro (code `appOL` toOL [ MOV II8 (OpReg rlo) (OpReg ro) ])
+
+getRegister' _ is32Bit (CmmMachOp (MO_UU_Conv W64 W16) [x])
+ | is32Bit = do
+  RegCode64 code _rhi rlo <- iselExpr64 x
+  ro <- getNewRegNat II16
+  return $ Fixed II16 ro (code `appOL` toOL [ MOV II16 (OpReg rlo) (OpReg ro) ])
 
 getRegister' _ _ (CmmLit lit@(CmmFloat f w)) =
   float_const_sse2  where
