@@ -1522,10 +1522,7 @@ getAmode e = do
          , is_label lit
          -> return (Amode (AddrBaseIndex EABaseRip EAIndexNone (litToImm lit)) nilOL)
 
-      CmmLit lit
-         | is32BitLit platform lit
-         -> return (Amode (ImmAddr (litToImm lit) 0) nilOL)
-
+      CmmLit litsnoc
       -- Literal with offsets too big (> 32 bits) fails during the linking phase
       -- (#15570). We already handled valid literals above so we don't have to
       -- test anything here.
@@ -1828,6 +1825,23 @@ condIntCode cond x y = do platform <- getPlatform
                           condIntCode' platform cond x y
 
 condIntCode' :: Platform -> Cond -> CmmExpr -> CmmExpr -> NatM CondCode
+
+-- Larger-than-native (64-bit ops on 32-bit platforms)
+condIntCode' platform cond x y
+  | target32Bit platform && isWord64 (cmmExprType platform x) = do
+  RegCode64 code1 r1hi r1lo <- iselExpr64 x
+  RegCode64 code2 r2hi r2lo <- iselExpr64 y
+  tmp <- getNewRegNat II32
+  let
+        code = code1 `appOL`
+               code2 `appOL`
+               toOL [ MOV II32 (OpReg r2lo) (OpReg tmp),
+                      CMP II32 (OpReg tmp) (OpReg r1lo),
+                      MOV II32 (OpReg r2hi) (OpReg tmp),
+                      SBB II32 (OpReg r1hi) (OpReg tmp)
+                    ]
+                  
+  return (CondCode False cond code)
 
 -- memory vs immediate
 condIntCode' platform cond (CmmLoad x pk _) (CmmLit lit)
