@@ -572,10 +572,10 @@ patchRegsOfInstr instr env
     BSWAP fmt reg        -> BSWAP fmt (env reg)
     NEGI fmt op          -> patch1 (NEGI fmt) op
     SHL  fmt imm dst     -> patch1 (SHL fmt imm) dst
-    SAL  fmt imm dst     -> patch1 (SAR fmt imm) dst
+    SAL  fmt imm dst     -> patch1 (SAL fmt imm) dst
     SAR  fmt imm dst     -> patch1 (SAR fmt imm) dst
     SHR  fmt imm dst     -> patch1 (SHR fmt imm) dst
-    SHLD fmt imm dst1 dst2 -> patch2 (SHRD fmt imm) dst1 dst2
+    SHLD fmt imm dst1 dst2 -> patch2 (SHLD fmt imm) dst1 dst2
     SHRD fmt imm dst1 dst2 -> patch2 (SHRD fmt imm) dst1 dst2
     BT   fmt imm src     -> patch1 (BT  fmt imm) src
     TEST fmt src dst     -> patch2 (TEST fmt) src dst
