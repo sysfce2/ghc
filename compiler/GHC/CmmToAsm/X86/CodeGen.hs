@@ -637,7 +637,7 @@ iselExpr64 (CmmMachOp (MO_S_Neg _) [expr]) = do
    Reg64 rohi rolo <- getNewReg64
    let
         ocode = code `appOL`
-                toOL [ MOV II32 (OpReg rlo) (OpReg rolo), 
+                toOL [ MOV II32 (OpReg rlo) (OpReg rolo),
                        XOR II32 (OpReg rohi) (OpReg rohi),
                        NEGI II32 (OpReg rolo),
                        SBB II32 (OpReg rhi) (OpReg rohi) ]
@@ -1879,7 +1879,7 @@ condIntCode' platform cond x y
                       MOV II32 (OpReg r2hi) (OpReg tmp),
                       SBB II32 (OpReg r1hi) (OpReg tmp)
                     ]
-                  
+
   return (CondCode False cond code)
 
 -- memory vs immediate

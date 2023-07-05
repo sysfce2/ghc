@@ -734,7 +734,7 @@ pprInstr platform i = case i of
 
    SHR format src dst
       -> pprShift (text "shr") format src dst
-   
+
    SHLD format src dst1 dst2
       -> pprShift2 (text "shld") format src dst1 dst2
 

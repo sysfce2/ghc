@@ -1688,6 +1688,33 @@ emitPrimOp cfg primop =
   isQuottishOp MO_I64_Rem = True
   isQuottishOp MO_W64_Quot = True
   isQuottishOp MO_W64_Rem = True
+
+  isQuottishOp MO_I64_ToI = True
+  isQuottishOp MO_I64_FromI = True
+  isQuottishOp MO_W64_ToW = True
+  isQuottishOp MO_W64_FromW = True
+
+  isQuottishOp MO_x64_Eq = True
+  isQuottishOp MO_x64_Ne = True
+  isQuottishOp MO_I64_Ge = True
+  isQuottishOp MO_I64_Gt = True
+  isQuottishOp MO_I64_Le = True
+  isQuottishOp MO_I64_Lt = True
+  isQuottishOp MO_W64_Ge = True
+  isQuottishOp MO_W64_Gt = True
+  isQuottishOp MO_W64_Le = True
+  isQuottishOp MO_W64_Lt = True
+
+  isQuottishOp MO_UF_Conv{} = True
+
+  isQuottishOp MO_x64_And = True
+  isQuottishOp MO_x64_Or = True
+  isQuottishOp MO_x64_Xor = True
+  isQuottishOp MO_x64_Not = True
+  isQuottishOp MO_x64_Shl = True
+  isQuottishOp MO_I64_Shr = True
+  isQuottishOp MO_W64_Shr = True
+
   isQuottishOp _ = False
 
   opTranslate64
