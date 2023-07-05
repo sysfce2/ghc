@@ -967,6 +967,13 @@ extern char **environ;
 #define RTS_LIBGCC_SYMBOLS
 #endif
 
+// Symbols defined by libgcc/compiler-rt for AArch64's outline atomics.
+#if defined(linux_HOST_OS) && defined(aarch64_HOST_ARCH)
+#include "AArch64Symbols.h"
+#else
+#define RTS_AARCH64_SYMBOLS
+#endif
+
 // Symbols defined by libc
 #define RTS_LIBC_SYMBOLS                               \
       SymI_HasProto_redirect(atexit, atexit, STRENGTH_STRONG, CODE_TYPE_CODE) /* See Note [Strong symbols] */ \
@@ -1014,6 +1021,7 @@ RTS_LIBC_SYMBOLS
 RTS_LIBGCC_SYMBOLS
 RTS_FINI_ARRAY_SYMBOLS
 RTS_LIBFFI_SYMBOLS
+RTS_AARCH64_SYMBOLS
 
 #undef SymI_NeedsProto
 #undef SymI_NeedsDataProto
@@ -1055,6 +1063,7 @@ RtsSymbolVal rtsSyms[] = {
       RTS_LIBGCC_SYMBOLS
       RTS_FINI_ARRAY_SYMBOLS
       RTS_LIBFFI_SYMBOLS
+      RTS_AARCH64_SYMBOLS
       SymI_HasDataProto(nonmoving_write_barrier_enabled)
 #if defined(darwin_HOST_OS) && defined(i386_HOST_ARCH)
       // dyld stub code contains references to this,
