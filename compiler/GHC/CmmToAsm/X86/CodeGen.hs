@@ -1885,22 +1885,67 @@ condIntCode cond x y = do platform <- getPlatform
 
 condIntCode' :: Platform -> Cond -> CmmExpr -> CmmExpr -> NatM CondCode
 
--- Larger-than-native (64-bit ops on 32-bit platforms)
+-- 64-bit integer comparisons on 32-bit
+-- See Note [64-bit integer comparisons on 32-bit]
 condIntCode' platform cond x y
   | target32Bit platform && isWord64 (cmmExprType platform x) = do
+
   RegCode64 code1 r1hi r1lo <- iselExpr64 x
   RegCode64 code2 r2hi r2lo <- iselExpr64 y
-  tmp <- getNewRegNat II32
-  let
-        code = code1 `appOL`
-               code2 `appOL`
-               toOL [ MOV II32 (OpReg r2lo) (OpReg tmp),
-                      CMP II32 (OpReg tmp) (OpReg r1lo),
-                      MOV II32 (OpReg r2hi) (OpReg tmp),
-                      SBB II32 (OpReg r1hi) (OpReg tmp)
-                    ]
 
-  return (CondCode False cond code)
+  -- we mustn't clobber r1/r2 so we use temporaries
+  tmp1 <- getNewRegNat II32
+  tmp2 <- getNewRegNat II32
+
+  let cmpCode = intComparison cond r1hi r1lo r2hi r2lo tmp1 tmp2
+  return $ CondCode False cond (code1 `appOL` code2 `appOL` cmpCode)
+
+  where
+    intComparison cond r1_hi r1_lo r2_hi r2_lo tmp1 tmp2 =
+      case cond of
+        -- Let's hope these don't happen
+        ALWAYS  -> panic "impossible"
+        NEG     -> panic "impossible"
+        POS     -> panic "impossible"
+        CARRY   -> panic "impossible"
+        OFLO    -> panic "impossible"
+        PARITY  -> panic "impossible"
+        NOTPARITY -> panic "impossible"
+        -- Special case #1 x == y and x != y
+        EQQ -> cmpExact
+        NE  -> cmpExact
+        -- [x >= y]
+        GE  -> cmpG
+        GEU -> cmpG
+        -- [x >  y]
+        GTT -> cmpG
+        GU  -> cmpG
+        -- [x <= y]
+        LE  -> cmpL
+        LEU -> cmpL
+        -- [x <  y]
+        LTT -> cmpL
+        LU  -> cmpL
+      where
+        cmpExact :: OrdList Instr
+        cmpExact =
+          toOL
+            [ MOV II32 (OpReg r1_hi) (OpReg tmp1)
+            , MOV II32 (OpReg r1_lo) (OpReg tmp2)
+            , XOR II32 (OpReg r2_hi) (OpReg tmp1)
+            , XOR II32 (OpReg r2_lo) (OpReg tmp2)
+            , OR  II32 (OpReg tmp1)  (OpReg tmp2)
+            ]
+        cmpG = toOL
+            [ MOV II32 (OpReg r1_hi) (OpReg tmp1)
+            , CMP II32 (OpReg r2_lo) (OpReg r1_lo)
+            , SBB II32 (OpReg r2_hi) (OpReg tmp1)
+            ]
+        cmpL = toOL 
+            [ MOV II32 (OpReg r2_hi) (OpReg tmp1)
+            , CMP II32 (OpReg r1_lo) (OpReg r2_lo)
+            , SBB II32 (OpReg r1_hi) (OpReg tmp1)
+            ]
 
 -- memory vs immediate
 condIntCode' platform cond (CmmLoad x pk _) (CmmLit lit)
