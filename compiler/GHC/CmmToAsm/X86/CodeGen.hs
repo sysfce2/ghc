@@ -624,8 +624,8 @@ iselExpr64 (CmmMachOp (MO_SS_Conv W16 W64) [expr]) = do
      code <- getAnyReg expr
      Reg64 r_dst_hi r_dst_lo <- getNewReg64
      return $ RegCode64 (code r_dst_lo `snocOL`
-                          MOV II16 (OpReg r_dst_lo) (OpReg eax) `snocOL`
-                          CLTD II16 `snocOL`
+                          MOVZxL II32 (OpReg r_dst_lo) (OpReg eax) `snocOL`
+                          CLTD II32 `snocOL`
                           MOV II32 (OpReg eax) (OpReg r_dst_lo) `snocOL`
                           MOV II32 (OpReg edx) (OpReg r_dst_hi))
                           r_dst_hi
@@ -635,8 +635,8 @@ iselExpr64 (CmmMachOp (MO_SS_Conv W8 W64) [expr]) = do
      code <- getAnyReg expr
      Reg64 r_dst_hi r_dst_lo <- getNewReg64
      return $ RegCode64 (code r_dst_lo `snocOL`
-                          MOV II8 (OpReg r_dst_lo) (OpReg eax) `snocOL`
-                          CLTD II8 `snocOL`
+                          MOVZxL II32 (OpReg r_dst_lo) (OpReg eax) `snocOL`
+                          CLTD II32 `snocOL`
                           MOV II32 (OpReg eax) (OpReg r_dst_lo) `snocOL`
                           MOV II32 (OpReg edx) (OpReg r_dst_hi))
                           r_dst_hi
