@@ -1903,7 +1903,7 @@ condIntCode' platform cond x y
   where
     intComparison cond r1_hi r1_lo r2_hi r2_lo tmp1 tmp2 =
       case cond of
-        -- Let's hope these don't happen
+        -- These don't occur as argument of condIntCode'
         ALWAYS  -> panic "impossible"
         NEG     -> panic "impossible"
         POS     -> panic "impossible"
@@ -1941,7 +1941,7 @@ condIntCode' platform cond x y
             , CMP II32 (OpReg r2_lo) (OpReg r1_lo)
             , SBB II32 (OpReg r2_hi) (OpReg tmp1)
             ]
-        cmpLE = toOL 
+        cmpLE = toOL
             [ MOV II32 (OpReg r2_hi) (OpReg tmp1)
             , CMP II32 (OpReg r1_lo) (OpReg r2_lo)
             , SBB II32 (OpReg r1_hi) (OpReg tmp1)
