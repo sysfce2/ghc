@@ -599,6 +599,16 @@ iselExpr64 (CmmMachOp (MO_UU_Conv W32 W64) [expr]) = do
                           r_dst_hi
                           r_dst_lo
 
+iselExpr64 (CmmMachOp (MO_UU_Conv w W64) [expr]) | w == W8 || w == W16 = do
+     (rsrc, code) <- getByteReg expr
+     Reg64 r_dst_hi r_dst_lo <- getNewReg64
+     return $ RegCode64 (code `appOL` toOL [
+                          MOVZxL II32 (OpReg rsrc) (OpReg r_dst_lo),
+                          MOV    II32 (OpImm (ImmInt 0)) (OpReg r_dst_hi)
+                          ])
+                          r_dst_hi
+                          r_dst_lo
+
 iselExpr64 (CmmMachOp (MO_SS_Conv W32 W64) [expr]) = do
      code <- getAnyReg expr
      Reg64 r_dst_hi r_dst_lo <- getNewReg64
