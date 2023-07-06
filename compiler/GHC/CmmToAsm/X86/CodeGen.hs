@@ -1897,8 +1897,8 @@ condIntCode' platform cond x y
   tmp1 <- getNewRegNat II32
   tmp2 <- getNewRegNat II32
 
-  let cmpCode = intComparison cond r1hi r1lo r2hi r2lo tmp1 tmp2
-  return $ CondCode False cond (code1 `appOL` code2 `appOL` cmpCode)
+  let (cond', cmpCode) = intComparison cond r1hi r1lo r2hi r2lo tmp1 tmp2
+  return $ CondCode False cond' (code1 `appOL` code2 `appOL` cmpCode)
 
   where
     intComparison cond r1_hi r1_lo r2_hi r2_lo tmp1 tmp2 =
@@ -1912,20 +1912,20 @@ condIntCode' platform cond x y
         PARITY  -> panic "impossible"
         NOTPARITY -> panic "impossible"
         -- Special case #1 x == y and x != y
-        EQQ -> cmpExact
-        NE  -> cmpExact
+        EQQ -> (EQQ, cmpExact)
+        NE  -> (NE, cmpExact)
         -- [x >= y]
-        GE  -> cmpG
-        GEU -> cmpG
+        GE  -> (GE, cmpGE)
+        GEU -> (GEU, cmpGE)
         -- [x >  y]
-        GTT -> cmpG
-        GU  -> cmpG
+        GTT -> (LTT, cmpLE)
+        GU  -> (LU, cmpLE)
         -- [x <= y]
-        LE  -> cmpL
-        LEU -> cmpL
+        LE  -> (GE, cmpLE)
+        LEU -> (GEU, cmpLE)
         -- [x <  y]
-        LTT -> cmpL
-        LU  -> cmpL
+        LTT -> (LTT, cmpGE)
+        LU  -> (LU, cmpGE)
       where
         cmpExact :: OrdList Instr
         cmpExact =
@@ -1936,12 +1936,12 @@ condIntCode' platform cond x y
             , XOR II32 (OpReg r2_lo) (OpReg tmp2)
             , OR  II32 (OpReg tmp1)  (OpReg tmp2)
             ]
-        cmpG = toOL
+        cmpGE = toOL
             [ MOV II32 (OpReg r1_hi) (OpReg tmp1)
             , CMP II32 (OpReg r2_lo) (OpReg r1_lo)
             , SBB II32 (OpReg r2_hi) (OpReg tmp1)
             ]
-        cmpL = toOL 
+        cmpLE = toOL 
             [ MOV II32 (OpReg r2_hi) (OpReg tmp1)
             , CMP II32 (OpReg r1_lo) (OpReg r2_lo)
             , SBB II32 (OpReg r1_hi) (OpReg tmp1)
