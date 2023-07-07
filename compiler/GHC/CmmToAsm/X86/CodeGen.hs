@@ -1875,6 +1875,27 @@ machOpToCond mo = case mo of
   MO_U_Le _ -> LEU
   _other -> pprPanic "machOpToCond" (pprMachOp mo)
 
+{-  Note [64-bit integer comparisons on 32-bit]
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    When doing these comparisons there are 2 kinds of
+    comparisons.
+
+    * Comparison for equality (or lack thereof)
+
+    We use xor to check if high/low bits are
+    equal. Then combine the results using or.
+
+    * Other comparisons:
+
+    We first compare the low registers
+    and use a subtraction with borrow to compare the high registers.
+
+    For signed numbers the condition is determined by
+    the sign and overflow flags agreeing or not
+    and for unsigned numbers the condition is the carry flag.
+
+-}
 
 -- @cond(Int|Flt)Code@: Turn a boolean expression into a condition, to be
 -- passed back up the tree.
@@ -2161,36 +2182,6 @@ I386: First, we have to ensure that the condition
 codes are set according to the supplied comparison operation.
 -}
 
-{-  Note [64-bit integer comparisons on 32-bit]
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    When doing these comparisons there are 2 kinds of
-    comparisons.
-
-    * Comparison for equality (or lack thereof)
-
-    We use xor to check if high/low bits are
-    equal. Then combine the results using or and
-    perform a single conditional jump based on the
-    result.
-
-    * Other comparisons:
-
-    We map all other comparisons to the >= operation.
-    Why? Because it's easy to encode it with a single
-    conditional jump.
-
-    We do this by first computing [r1_lo - r2_lo]
-    and use the carry flag to compute
-    [r1_high - r2_high - CF].
-
-    At which point if r1 >= r2 then the result will be
-    positive. Otherwise negative so we can branch on this
-    condition.
-
--}
-
-
 genCondBranch
     :: BlockId      -- the source of the jump
     -> BlockId      -- the true branch target
@@ -2205,67 +2196,6 @@ genCondBranch bid id false expr = do
 -- | We return the instructions generated.
 genCondBranch' :: Bool -> BlockId -> BlockId -> BlockId -> CmmExpr
                -> NatM InstrBlock
-
--- 64-bit integer comparisons on 32-bit
--- See Note [64-bit integer comparisons on 32-bit]
-genCondBranch' is32Bit _bid true false (CmmMachOp mop [e1,e2])
-  | is32Bit, Just W64 <- maybeIntComparison mop = do
-
-  RegCode64 code1 r1hi r1lo <- iselExpr64 e1
-  RegCode64 code2 r2hi r2lo <- iselExpr64 e2
-  let cond = machOpToCond mop :: Cond
-
-  -- we mustn't clobber r1/r2 so we use temporaries
-  tmp1 <- getNewRegNat II32
-  tmp2 <- getNewRegNat II32
-
-  let cmpCode = intComparison cond true false r1hi r1lo r2hi r2lo tmp1 tmp2
-  return $ code1 `appOL` code2 `appOL` cmpCode
-
-  where
-    intComparison cond true false r1_hi r1_lo r2_hi r2_lo tmp1 tmp2 =
-      case cond of
-        -- Impossible results of machOpToCond
-        ALWAYS  -> panic "impossible"
-        NEG     -> panic "impossible"
-        POS     -> panic "impossible"
-        CARRY   -> panic "impossible"
-        OFLO    -> panic "impossible"
-        PARITY  -> panic "impossible"
-        NOTPARITY -> panic "impossible"
-        -- Special case #1 x == y and x != y
-        EQQ -> cmpExact
-        NE  -> cmpExact
-        -- [x >= y]
-        GE  -> cmpGE
-        GEU -> cmpGE
-        -- [x >  y] <==> ![y >= x]
-        GTT -> intComparison GE  false true r2_hi r2_lo r1_hi r1_lo tmp1 tmp2
-        GU  -> intComparison GEU false true r2_hi r2_lo r1_hi r1_lo tmp1 tmp2
-        -- [x <= y] <==> [y >= x]
-        LE  -> intComparison GE  true false r2_hi r2_lo r1_hi r1_lo tmp1 tmp2
-        LEU -> intComparison GEU true false r2_hi r2_lo r1_hi r1_lo tmp1 tmp2
-        -- [x <  y] <==> ![x >= x]
-        LTT -> intComparison GE  false true r1_hi r1_lo r2_hi r2_lo tmp1 tmp2
-        LU  -> intComparison GEU false true r1_hi r1_lo r2_hi r2_lo tmp1 tmp2
-      where
-        cmpExact :: OrdList Instr
-        cmpExact =
-          toOL
-            [ MOV II32 (OpReg r1_hi) (OpReg tmp1)
-            , MOV II32 (OpReg r1_lo) (OpReg tmp2)
-            , XOR II32 (OpReg r2_hi) (OpReg tmp1)
-            , XOR II32 (OpReg r2_lo) (OpReg tmp2)
-            , OR  II32 (OpReg tmp1)  (OpReg tmp2)
-            , JXX cond true
-            , JXX ALWAYS false
-            ]
-        cmpGE = toOL
-            [ MOV II32 (OpReg r1_hi) (OpReg tmp1)
-            , CMP II32 (OpReg r2_lo) (OpReg r1_lo)
-            , SBB II32 (OpReg r2_hi) (OpReg tmp1)
-            , JXX cond true
-            , JXX ALWAYS false ]
 
 genCondBranch' _ bid id false bool = do
   CondCode is_float cond cond_code <- getCondCode bool
