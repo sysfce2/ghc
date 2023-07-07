@@ -2014,7 +2014,6 @@ condIntCode' platform cond x y = do
 --------------------------------------------------------------------------------
 condFltCode :: Cond -> CmmExpr -> CmmExpr -> NatM CondCode
 
--- Larger-than-native (64-bit ops on 32-bit platforms)
 condFltCode cond x y
   =  condFltCode_sse2
   where
