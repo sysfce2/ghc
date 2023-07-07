@@ -726,9 +726,6 @@ pprInstr platform i = case i of
    SHL format src dst
       -> pprShift (text "shl") format src dst
 
-   SAL format src dst
-      -> pprShift (text "sal") format src dst
-
    SAR format src dst
       -> pprShift (text "sar") format src dst
 

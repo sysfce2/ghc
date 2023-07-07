@@ -693,10 +693,10 @@ iselExpr64 (CmmMachOp (MO_Mul _) [e1,e2]) = do
                      ]
    return (RegCode64 code rhi rlo)
 
--- To shift a 64-bit number to the left we use the SHLD and SAL instructions.
+-- To shift a 64-bit number to the left we use the SHLD and SHL instructions.
 -- We use SHLD to shift the bits in @rhi@ to the left while copying
 -- high bits from @rlo@ to fill the new space in the low bits of @rhi@.
--- That leaves @rlo@ unchanged, so we use SAL to shift the bits of @rlo@ left.
+-- That leaves @rlo@ unchanged, so we use SHL to shift the bits of @rlo@ left.
 -- However, both these instructions only use the lowest 5 bits from %cl to do
 -- their shifting. So if the sixth bit (0x32) is set then we additionally move
 -- the contents of @rlo@ to @rhi@ and clear @rlo@.
@@ -713,7 +713,7 @@ iselExpr64 (CmmMachOp (MO_Shl _) [e1,e2]) = do
                 toOL [ MOV II32 (OpReg r1lo) (OpReg rlo),
                        MOV II32 (OpReg r1hi) (OpReg rhi),
                        SHLD II32 (OpReg ecx) (OpReg rlo) (OpReg rhi),
-                       SAL II32 (OpReg ecx) (OpReg rlo),
+                       SHL II32 (OpReg ecx) (OpReg rlo),
                        TEST II32 (OpImm (ImmInt 32)) (OpReg ecx),
                        JXX EQQ lbl2,
                        JXX ALWAYS lbl1,
