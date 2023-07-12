@@ -202,6 +202,15 @@ test('CoOpt_Singletons',
 
 #########
 
+# Moved from simplCore/should_compile
+test('T18730',
+      [ only_ways(['optasm'])
+      , collect_compiler_stats('bytes allocated',1)
+      , extra_files(['T8730_aux.hs'])
+      ],
+      multimod_compile,
+      ['T18730_A', '-v0 -O'])
+
 test ('LargeRecord',
       [ only_ways(['normal']),
         collect_compiler_stats('bytes allocated',1)
@@ -523,6 +532,11 @@ test ('T15164',
       compile,
       ['-v0 -O'])
 test('T15630',
+      [collect_compiler_stats()
+      ],
+      compile,
+      ['-O2'])
+test('T15630a',
       [collect_compiler_stats()
       ],
       compile,
