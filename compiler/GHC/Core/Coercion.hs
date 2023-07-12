@@ -37,7 +37,7 @@ module GHC.Core.Coercion (
         mkAxInstLHS, mkUnbranchedAxInstLHS,
         mkPiCo, mkPiCos, mkCoCast,
         mkSymCo, mkTransCo,
-        mkSelCo, getNthFun, getNthFromType, mkLRCo,
+        mkSelCo, mkSelCoResRole, getNthFun, selectFromType, mkLRCo,
         mkInstCo, mkAppCo, mkAppCos, mkTyConAppCo,
         mkFunCo, mkFunCo2, mkFunCoNoFTF, mkFunResCo,
         mkNakedFunCo,
@@ -556,6 +556,10 @@ splitForAllCo_maybe :: Coercion -> Maybe (TyCoVar, ForAllTyFlag, ForAllTyFlag, C
 splitForAllCo_maybe (ForAllCo { fco_tcv = tv, fco_visL = vL, fco_visR = vR
                               , fco_kind = k_co, fco_body = co })
   = Just (tv, vL, vR, k_co, co)
+splitForAllCo_maybe co
+  | Just (ty, r)        <- isReflCo_maybe co
+  , Just (Bndr tcv vis, body_ty) <- splitForAllForAllTyBinder_maybe ty
+  = Just (tcv, vis, vis, mkNomReflCo (varType tcv), mkReflCo r body_ty)
 splitForAllCo_maybe _ = Nothing
 
 -- | Like 'splitForAllCo_maybe', but only returns Just for tyvar binder
@@ -573,7 +577,6 @@ splitForAllCo_co_maybe co
   , isCoVar cv
   = Just stuff
 splitForAllCo_co_maybe _ = Nothing
-
 
 -------------------------------------------------------
 -- and some coercion kind stuff
@@ -1115,12 +1118,18 @@ mkUnivCo prov role ty1 ty2
 --   a kind of @t1 ~ t2@ becomes the kind @t2 ~ t1@.
 mkSymCo :: Coercion -> Coercion
 
--- Do a few simple optimizations, but don't bother pushing occurrences
--- of symmetry to the leaves; the optimizer will take care of that.
-mkSymCo co | isReflCo co          = co
-mkSymCo    (SymCo co)             = co
-mkSymCo    (SubCo (SymCo co))     = SubCo co
-mkSymCo co                        = SymCo co
+-- Do a few simple optimizations, mainly to expose the underlying
+-- constructors to other 'mk' functions.  E.g.
+--   mkInstCo (mkSymCo (ForAllCo ...)) ty
+-- We want to push the SymCo inside the ForallCo, so that we can instantiate
+-- This can make a big difference.  E.g without coercion optimisation, GHC.Read
+-- totally explodes; but when we push Sym inside ForAll, it's fine.
+mkSymCo co | isReflCo co   = co
+mkSymCo (SymCo co)         = co
+mkSymCo (SubCo (SymCo co)) = SubCo co
+mkSymCo co@(ForAllCo { fco_kind = kco, fco_body = body_co })
+  | isReflCo kco           = co { fco_body = mkSymCo body_co }
+mkSymCo co                 = SymCo co
 
 -- | Create a new 'Coercion' by composing the two given 'Coercion's transitively.
 --   (co1 ; co2)
@@ -1131,6 +1140,7 @@ mkTransCo (GRefl r t1 (MCo co1)) (GRefl _ _ (MCo co2))
   = GRefl r t1 (MCo $ mkTransCo co1 co2)
 mkTransCo co1 co2                = TransCo co1 co2
 
+--------------------
 mkSelCo :: HasDebugCallStack
         => CoSel
         -> Coercion
@@ -1150,7 +1160,7 @@ mkSelCo_maybe cs co
 
     go cs co
       | Just (ty, r) <- isReflCo_maybe co
-      = Just (mkReflCo r (getNthFromType cs ty))
+      = Just (mkReflCo (mkSelCoResRole cs r) (selectFromType cs ty))
 
     go SelForAll (ForAllCo { fco_kind = kind_co })
       = Just kind_co
@@ -1201,6 +1211,14 @@ mkSelCo_maybe cs co
 
     good_call _ = False
 
+mkSelCoResRole :: CoSel -> Role -> Role
+-- What is the role of (SelCo cs co), if co has role 'r'?
+-- It is not just 'r'!
+-- c.f. the SelCo case of coercionRole
+mkSelCoResRole SelForAll       _ = Nominal
+mkSelCoResRole (SelTyCon _ r') _ = r'
+mkSelCoResRole (SelFun fs)     r = funRole r fs
+
 -- | Extract the nth field of a FunCo
 getNthFun :: FunSel
           -> a    -- ^ multiplicity
@@ -1211,6 +1229,24 @@ getNthFun SelMult mult _   _   = mult
 getNthFun SelArg _     arg _   = arg
 getNthFun SelRes _     _   res = res
 
+selectFromType :: HasDebugCallStack => CoSel -> Type -> Type
+selectFromType (SelFun fs) ty
+  | Just (_af, mult, arg, res) <- splitFunTy_maybe ty
+  = getNthFun fs mult arg res
+
+selectFromType (SelTyCon n _) ty
+  | Just args <- tyConAppArgs_maybe ty
+  = assertPpr (args `lengthExceeds` n) (ppr n $$ ppr ty) $
+    args `getNth` n
+
+selectFromType SelForAll ty       -- Works for both tyvar and covar
+  | Just (tv,_) <- splitForAllTyCoVar_maybe ty
+  = tyVarKind tv
+
+selectFromType cs ty
+  = pprPanic "selectFromType" (ppr cs $$ ppr ty)
+
+--------------------
 mkLRCo :: LeftOrRight -> Coercion -> Coercion
 mkLRCo lr co
   | Just (ty, eq) <- isReflCo_maybe co
@@ -1219,11 +1255,14 @@ mkLRCo lr co
   = LRCo lr co
 
 -- | Instantiates a 'Coercion'.
+-- Works for both tyvar and covar
 mkInstCo :: Coercion -> CoercionN -> Coercion
-mkInstCo (ForAllCo { fco_tcv = tcv, fco_body = body_co }) co
-  | Just (arg, _) <- isReflCo_maybe co
-      -- works for both tyvar and covar
-  = substCoUnchecked (zipTCvSubst [tcv] [arg]) body_co
+mkInstCo co_fun co_arg
+  | Just (tcv, _, _, kind_co, body_co) <- splitForAllCo_maybe co_fun
+  , Just (arg, _) <- isReflCo_maybe co_arg
+  = assertPpr (isReflexiveCo kind_co) (ppr co_fun $$ ppr co_arg) $
+       -- If the arg is Refl, then kind_co must be reflexive too
+    substCoUnchecked (zipTCvSubst [tcv] [arg]) body_co
 mkInstCo co arg = InstCo co arg
 
 -- | Given @ty :: k1@, @co :: k1 ~ k2@,
@@ -2404,7 +2443,7 @@ coercionLKind co
     go (InstCo aco arg)          = go_app aco [go arg]
     go (KindCo co)               = typeKind (go co)
     go (SubCo co)                = go co
-    go (SelCo d co)              = getNthFromType d (go co)
+    go (SelCo d co)              = selectFromType d (go co)
     go (AxiomInstCo ax ind cos)  = go_ax_inst ax ind (map go cos)
     go (AxiomRuleCo ax cos)      = pFst $ expectJust "coercionKind" $
                                    coaxrProves ax $ map coercionKind cos
@@ -2427,23 +2466,6 @@ coercionLKind co
     go_app (InstCo co arg) args = go_app co (go arg:args)
     go_app co              args = piResultTys (go co) args
 
-getNthFromType :: HasDebugCallStack => CoSel -> Type -> Type
-getNthFromType (SelFun fs) ty
-  | Just (_af, mult, arg, res) <- splitFunTy_maybe ty
-  = getNthFun fs mult arg res
-
-getNthFromType (SelTyCon n _) ty
-  | Just args <- tyConAppArgs_maybe ty
-  = assertPpr (args `lengthExceeds` n) (ppr n $$ ppr ty) $
-    args `getNth` n
-
-getNthFromType SelForAll ty       -- Works for both tyvar and covar
-  | Just (tv,_) <- splitForAllTyCoVar_maybe ty
-  = tyVarKind tv
-
-getNthFromType cs ty
-  = pprPanic "getNthFromType" (ppr cs $$ ppr ty)
-
 coercionRKind :: Coercion -> Type
 coercionRKind co
   = go co
@@ -2465,7 +2487,7 @@ coercionRKind co
     go (InstCo aco arg)          = go_app aco [go arg]
     go (KindCo co)               = typeKind (go co)
     go (SubCo co)                = go co
-    go (SelCo d co)              = getNthFromType d (go co)
+    go (SelCo d co)              = selectFromType d (go co)
     go (AxiomInstCo ax ind cos)  = go_ax_inst ax ind (map go cos)
     go (AxiomRuleCo ax cos)      = pSnd $ expectJust "coercionKind" $
                                    coaxrProves ax $ map coercionKind cos
