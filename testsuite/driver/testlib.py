@@ -2944,16 +2944,12 @@ def findTFiles(roots: List[str]) -> Iterator[str]:
 # -----------------------------------------------------------------------------
 # Output a test summary to the specified file object
 
-def summary(t: TestRun, file: TextIO, short=False, color=False) -> None:
+def summary(t: TestRun, file: TextIO, color=False) -> None:
 
     file.write('\n')
     printUnexpectedTests(file,
         [t.unexpected_passes, t.unexpected_failures,
          t.unexpected_stat_failures, t.framework_failures])
-
-    if short:
-        # Only print the list of unexpected tests above.
-        return
 
     if len(t.unexpected_failures) > 0 or \
         len(t.unexpected_stat_failures) > 0 or \
