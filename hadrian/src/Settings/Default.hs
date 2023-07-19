@@ -135,6 +135,7 @@ stage1Packages = do
         , ghc
         , ghcBignum
         , ghcCompact
+        , ghcExperimental
         , ghcInternals
         , ghcPkg
         , ghcPrim
