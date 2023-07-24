@@ -1,10 +1,15 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections   #-}
 
 -- This module contains functions which implement
 -- the -finfo-table-map and -fdistinct-constructor-tables flags
 module GHC.Stg.Debug
   ( StgDebugOpts(..)
+  , StgDebugDctConfig(..)
+  , dctConfigPlus
+  , dctConfigMinus
   , collectDebugInformation
+  , parseDistinctConstructorTablesArg
   ) where
 
 import GHC.Prelude
@@ -16,12 +21,16 @@ import GHC.Types.Tickish
 import GHC.Core.DataCon
 import GHC.Types.IPE
 import GHC.Unit.Module
-import GHC.Types.Name   ( getName, getOccName, occNameFS, nameSrcSpan)
+import GHC.Types.Name   ( getName, getOccName, occNameFS, nameSrcSpan, occName, occNameString)
 import GHC.Data.FastString
 
 import Control.Monad (when)
 import Control.Monad.Trans.Reader
+import Data.Set (Set)
+import qualified Data.Set as Set
 import GHC.Utils.Monad.State.Strict
+import GHC.Utils.Binary (Binary)
+import qualified GHC.Utils.Binary as B
 import Control.Monad.Trans.Class
 import GHC.Types.Unique.Map
 import GHC.Types.SrcLoc
@@ -33,8 +42,92 @@ data SpanWithLabel = SpanWithLabel RealSrcSpan LexicalFastString
 
 data StgDebugOpts = StgDebugOpts
   { stgDebug_infoTableMap              :: !Bool
-  , stgDebug_distinctConstructorTables :: !Bool
+  , stgDebug_distinctConstructorTables :: !StgDebugDctConfig
   }
+
+-- | Configuration describing which constructors should be given distinct info
+-- tables for each usage.
+data StgDebugDctConfig =
+    -- | Create distinct constructor tables for each usage of any data
+    -- constructor.
+    --
+    -- This is the behavior if just @-fdistinct-constructor-tables@ is supplied.
+    All
+
+    -- | Create distinct constructor tables for each usage of only these data
+    -- constructors.
+    --
+    -- This is the behavior if @-fdistinct-constructor-tables=C1,...,CN@ is
+    -- supplied.
+  | Only !(Set String)
+
+    -- | Create distinct constructor tables for each usage of any data
+    -- constructor except these ones.
+    --
+    -- This is the behavior if @-fdistinct-constructor-tables@ and
+    -- @-fno-distinct-constructor-tables=C1,...,CN@ is given.
+  | AllExcept !(Set String)
+
+    -- | Do not create distinct constructor tables for any data constructor.
+    --
+    -- This is the behavior if no @-fdistinct-constructor-tables@ is given (or
+    -- @-fno-distinct-constructor-tables@ is given).
+  | None
+
+-- | Necessary for 'StgDebugDctConfig' to be included in the dynflags
+-- fingerprint
+instance Binary StgDebugDctConfig where
+  put_ bh All = B.putByte bh 0
+  put_ bh (Only cs) = do
+    B.putByte bh 1
+    B.put_ bh cs
+  put_ bh (AllExcept cs) = do
+    B.putByte bh 2
+    B.put_ bh cs
+  put_ bh None = B.putByte bh 3
+
+  get bh = do
+    h <- B.getByte bh
+    case h of
+      0 -> pure All
+      1 -> Only <$> B.get bh
+      2 -> AllExcept <$> B.get bh
+      _ -> pure None
+
+-- | Given a distinct constructor tables configuration and a set of constructor
+-- names that we want to generate distinct info tables for, create a new
+-- configuration which includes those constructors.
+--
+-- If the given set is empty, that means the user has entered
+-- @-fdistinct-constructor-tables@ with no constructor names specified, and
+-- therefore we consider that an 'All' configuration.
+dctConfigPlus :: StgDebugDctConfig -> Set String -> StgDebugDctConfig
+dctConfigPlus cfg cs
+    | Set.null cs = All
+    | otherwise =
+        case (cfg, cs) of
+          (All            , _  ) -> All
+          ((Only      cs1), cs2) -> Only $ Set.union cs1 cs2
+          ((AllExcept cs1), cs2) -> AllExcept $ Set.difference cs1 cs2
+          (None           , cs ) -> Only cs
+
+-- | Given a distinct constructor tables configuration and a set of constructor
+-- names that we /do not/ want to generate distinct info tables for, create a
+-- new configuration which excludes those constructors.
+--
+-- If the given set is empty, that means the user has entered
+-- @-fno-distinct-constructor-tables@ with no constructor names specified, and
+-- therefore we consider that a 'None' configuration.
+dctConfigMinus :: StgDebugDctConfig -> Set String -> StgDebugDctConfig
+dctConfigMinus cfg cs
+    | Set.null cs = None
+    | otherwise =
+        case (cfg, cs) of
+          (All            , cs ) -> AllExcept cs
+          ((Only      cs1), cs2) -> Only $ Set.difference cs1 cs2
+          ((AllExcept cs1), cs2) -> AllExcept $ Set.union cs1 cs2
+          (None           , _  ) -> None
+
 
 data R = R { rOpts :: StgDebugOpts, rModLocation :: ModLocation, rSpan :: Maybe SpanWithLabel }
 
@@ -160,10 +253,11 @@ numberDataCon dc _ | isUnboxedTupleDataCon dc = return NoNumber
 numberDataCon dc _ | isUnboxedSumDataCon dc = return NoNumber
 numberDataCon dc ts = do
   opts <- asks rOpts
-  if stgDebug_distinctConstructorTables opts then do
-    -- -fdistinct-constructor-tables is enabled. Add an entry to the data
-    -- constructor map for this occurence of the data constructor with a unique
-    -- number and a src span
+  if shouldMakeDistinctTable opts dc then do
+    -- -fdistinct-constructor-tables is enabled and we do want to make distinct
+    -- tables for this constructor. Add an entry to the data constructor map for
+    -- this occurence of the data constructor with a unique number and a src
+    -- span
     env <- lift get
     mcc <- asks rSpan
     let
@@ -188,7 +282,8 @@ numberDataCon dc ts = do
       Nothing -> NoNumber
       Just res -> Numbered (fst (NE.head res))
   else do
-    -- -fdistinct-constructor-tables is not enabled
+    -- -fdistinct-constructor-tables is not enabled, or we do not want to make
+    -- distinct tables for this specific constructor
     return NoNumber
 
 selectTick :: [StgTickish] -> Maybe (RealSrcSpan, LexicalFastString)
@@ -197,6 +292,37 @@ selectTick = foldl' go Nothing
     go :: Maybe (RealSrcSpan, LexicalFastString) -> StgTickish -> Maybe (RealSrcSpan, LexicalFastString)
     go _   (SourceNote rss d) = Just (rss, d)
     go acc _                  = acc
+
+-- | Parse a string of comma-separated constructor names into a 'Set' of
+-- 'String's with one entry per constructor.
+parseDistinctConstructorTablesArg :: String -> Set String
+parseDistinctConstructorTablesArg =
+      -- Ensure we insert the last constructor name built by the fold, if not
+      -- empty
+      uncurry insertNonEmpty
+    . foldr go ("", Set.empty)
+  where
+    go :: Char -> (String, Set String) -> (String, Set String)
+    go ',' (cur, acc) = ("", Set.insert cur acc)
+    go c   (cur, acc) = (c : cur, acc)
+
+    insertNonEmpty :: String -> Set String -> Set String
+    insertNonEmpty "" = id
+    insertNonEmpty cs = Set.insert cs
+
+-- | Descide whether a distinct info table should be made for a usage of a data
+-- constructor. We only want to do this if -fdistinct-constructor-tables was
+-- given and this constructor name was given, or no constructor names were
+-- given.
+shouldMakeDistinctTable :: StgDebugOpts -> DataCon -> Bool
+shouldMakeDistinctTable StgDebugOpts{..} dc =
+    case stgDebug_distinctConstructorTables of
+      All -> True
+      Only these -> Set.member dcStr these
+      AllExcept these -> Set.notMember dcStr these
+      None -> False
+  where
+    dcStr = occNameString . occName $ dataConName dc
 
 {-
 Note [Mapping Info Tables to Source Positions]

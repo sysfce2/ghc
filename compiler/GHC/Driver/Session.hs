@@ -260,6 +260,7 @@ import GHC.Utils.Outputable
 import GHC.Settings
 import GHC.CmmToAsm.CFG.Weight
 import GHC.Core.Opt.CallerCC
+import GHC.Stg.Debug
 
 import GHC.SysTools.BaseDir ( expandToolDir, expandTopDir )
 
@@ -1781,6 +1782,10 @@ dynamic_flags_deps = [
         -- Caller-CC
   , make_ord_flag defGhcFlag "fprof-callers"
          (HasArg setCallerCcFilters)
+  , make_ord_flag defGhcFlag "fdistinct-constructor-tables"
+      (OptPrefix setDistinctCostructorTables)
+  , make_ord_flag defGhcFlag "fno-distinct-constructor-tables"
+      (OptPrefix unSetDistinctCostructorTables)
         ------ Compiler flags -----------------------------------------------
 
   , make_ord_flag defGhcFlag "fasm"             (NoArg (setObjBackend ncgBackend))
@@ -2460,7 +2465,6 @@ fFlagsDeps = [
   flagSpec "cmm-thread-sanitizer"             Opt_CmmThreadSanitizer,
   flagSpec "split-sections"                   Opt_SplitSections,
   flagSpec "break-points"                     Opt_InsertBreakpoints,
-  flagSpec "distinct-constructor-tables"      Opt_DistinctConstructorTables,
   flagSpec "info-table-map"                   Opt_InfoTableMap,
   flagSpec "info-table-map-with-stack"        Opt_InfoTableMapWithStack,
   flagSpec "info-table-map-with-fallback"     Opt_InfoTableMapWithFallback
@@ -3297,6 +3301,22 @@ setCallerCcFilters arg =
   case parseCallerCcFilter arg of
     Right filt -> upd $ \d -> d { callerCcFilters = filt : callerCcFilters d }
     Left err -> addErr err
+
+setDistinctCostructorTables :: String -> DynP ()
+setDistinctCostructorTables arg = do
+  let cs = parseDistinctConstructorTablesArg arg
+  upd $ \d ->
+    d { distinctConstructorTables =
+        (distinctConstructorTables d) `dctConfigPlus` cs
+      }
+
+unSetDistinctCostructorTables :: String -> DynP ()
+unSetDistinctCostructorTables arg = do
+  let cs = parseDistinctConstructorTablesArg arg
+  upd $ \d ->
+    d { distinctConstructorTables =
+        (distinctConstructorTables d) `dctConfigMinus` cs
+      }
 
 setMainIs :: String -> DynP ()
 setMainIs arg
