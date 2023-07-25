@@ -1026,9 +1026,9 @@ getRegister' config plat expr
         -- This will hold the product
         tmp <- getNewRegNat (intFormat tmp_w)
         let ext_mode = case w of
-                         W32 -> ESXTW
-                         W16 -> ESXTH
-                         W8  -> ESXTB
+                         W32 -> ESXTX
+                         W16 -> ESXTW
+                         W8  -> ESXTH
                          _   -> panic "do_mul_may_oflo: impossible"
             mul = case w of
                     W32 -> SMULL
