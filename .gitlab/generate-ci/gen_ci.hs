@@ -729,7 +729,7 @@ job arch opsys buildConfig = NamedJob { name = jobName, jobInfo = Job {..} }
 
     jobAllowFailure = False
     jobStage = "full-build"
-    jobNeeds = ["hadrian-ghc-in-ghci"]
+    jobNeeds = [] --["hadrian-ghc-in-ghci"]
 
 ---------------------------------------------------------------------------
 -- Job Modifiers
