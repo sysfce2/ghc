@@ -151,6 +151,11 @@ AC_DEFUN([VALIDATE_GHC_TOOLCHAIN],[
           In light of it, if you've spotted this difference, please report a GHC bug at
                 https://www.haskell.org/ghc/reportabug
       ])
+
+    case "$EnableStrictGhcToolchainCheck" in
+        YES)
+      AC_MSG_ERROR([Failing due to --enable-strict-ghc-toolchain-check])
+    esac
     fi
 ])
 
