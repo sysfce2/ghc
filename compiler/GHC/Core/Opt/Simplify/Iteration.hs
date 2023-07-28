@@ -4115,14 +4115,19 @@ what `f` is, instead of lambda-abstracting over it.
 
 To achieve this:
 
-1. Do not postInlineUnconditionally a join point, until the Final
-   phase.  (The Final phase is still quite early, so we might consider
-   delaying still more.)
+1. Do not postInlineUnconditionally a join point, ever. Doing
+   postInlineUnconditionally is primarily to push allocation into cold
+   branches; but a join point doesn't allocate, so that's a non-motivation.
 
-2. In mkDupableAlt and mkDupableStrictBind, generate an alterative for
-   all alternatives, except for exprIsTrival RHSs. Previously we used
-   exprIsDupable.  This generates a lot more join points, but makes
-   them much more case-of-case friendly.
+2. In mkDupableAlt and mkDupableStrictBind, generate an alterative for all
+   alternatives, except for exprIsTrival RHSs (see `ok_to_dup_alt`).  Previously
+   we used exprIsDupable.  This generates a lot more join points, but makes them
+   much more case-of-case friendly.
+
+   We are happy to duplicate
+       j a b = K b a
+   where all the arguments of the constructor are parameters of the join point
+   because then the "massive difference" described above can't happen.
 
    It is definitely worth checking for exprIsTrivial, otherwise we get
    an extra Simplifier iteration, because it is inlined in the next

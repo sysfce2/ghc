@@ -1537,8 +1537,8 @@ postInlineUnconditionally env bind_cxt old_bndr bndr rhs
   | isTopLevel (bindContextLevel bind_cxt)
                                 = False -- Note [Top level and postInlineUnconditionally]
   | exprIsTrivial rhs           = True
-  | BC_Join {} <- bind_cxt              -- See point (1) of Note [Duplicating join points]
-  , not (phase == FinalPhase)   = False -- in Simplify.hs
+  | BC_Join {} <- bind_cxt      = False -- See point (1) of Note [Duplicating join points]
+                                        --     in GHC.Core.Opt.Simplify.Iteration
   | otherwise
   = case occ_info of
       OneOcc { occ_in_lam = in_lam, occ_int_cxt = int_cxt, occ_n_br = n_br }
@@ -1547,9 +1547,11 @@ postInlineUnconditionally env bind_cxt old_bndr bndr rhs
         | let not_inside_lam = in_lam == NotInsideLam
         -> n_br < 100  -- See #23627
 
-           && (  (n_br == 1 && not_inside_lam)  -- See Note [Post-inline for single-use things]
-              || smallEnoughToInline uf_opts unfolding)  -- Small enough to dup
-                 -- ToDo: consider discount on smallEnoughToInline if int_cxt is true
+           && (  (n_br == 1 && not_inside_lam)  -- One syntactic occurrence
+                      -- See Note [Post-inline for single-use things]
+              || (is_lazy && smallEnoughToInline uf_opts unfolding))
+                      -- Multiple syntactic occurences; but lazy, and small enough to dup
+                      -- ToDo: consider discount on smallEnoughToInline if int_cxt is true
 
            && (not_inside_lam ||
                         -- Outside a lambda, we want to be reasonably aggressive
@@ -1573,6 +1575,7 @@ postInlineUnconditionally env bind_cxt old_bndr bndr rhs
       _ -> False
 
   where
+    is_lazy   = not (isStrictId bndr)
     occ_info  = idOccInfo old_bndr
     unfolding = idUnfolding bndr
     uf_opts   = seUnfoldingOpts env
