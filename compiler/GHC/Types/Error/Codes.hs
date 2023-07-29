@@ -420,7 +420,6 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "TcRnPartialTypeSignatures"                     = 60661
   GhcDiagnosticCode "TcRnLazyGADTPattern"                           = 87005
   GhcDiagnosticCode "TcRnArrowProcGADTPattern"                      = 64525
-  GhcDiagnosticCode "TcRnForallIdentifier"                          = 64088
   GhcDiagnosticCode "TcRnTypeEqualityOutOfScope"                    = 12003
   GhcDiagnosticCode "TcRnTypeEqualityRequiresOperators"             = 58520
   GhcDiagnosticCode "TcRnIllegalTypeOperator"                       = 62547
@@ -879,6 +878,7 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "UntouchableVariable"                           = 34699
   GhcDiagnosticCode "TcRnBindVarAlreadyInScope"                     = 69710
   GhcDiagnosticCode "TcRnBindMultipleVariables"                     = 92957
+  GhcDiagnosticCode "TcRnForallIdentifier"                          = 64088
 
 {- *********************************************************************
 *                                                                      *

@@ -2255,7 +2255,8 @@ wWarningFlagsDeps = mconcat [
   warnSpec    Opt_WarnOperatorWhitespace,
   warnSpec    Opt_WarnImplicitLift,
   warnSpec    Opt_WarnMissingExportedPatternSynonymSignatures,
-  warnSpec    Opt_WarnForallIdentifier,
+  depWarnSpec Opt_WarnForallIdentifier
+              "forall is no longer a valid identifier",
   warnSpec    Opt_WarnUnicodeBidirectionalFormatCharacters,
   warnSpec    Opt_WarnGADTMonoLocalBinds,
   warnSpec    Opt_WarnTypeEqualityOutOfScope,
