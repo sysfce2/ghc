@@ -300,6 +300,7 @@ keepRenamedSource _ gbl_env group =
     update_exports Nothing = Just []
     update_exports m = m
 
+    update :: Maybe (HsGroup GhcRn) -> Maybe (HsGroup GhcRn)
     update Nothing = Just emptyRnGroup
     update m       = m
 

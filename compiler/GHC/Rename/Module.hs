@@ -211,7 +211,7 @@ rnSrcDecls group@(HsGroup { hs_valds   = val_decls,
 
    last_tcg_env <- getGblEnv ;
    -- (I) Compute the results and return
-   let {rn_group = HsGroup { hs_ext     = noExtField,
+   let {rn_group = HsGroup { hs_ext     = all_bndrs,
                              hs_valds   = rn_val_decls,
                              hs_splcds  = rn_splice_decls,
                              hs_tyclds  = rn_tycl_decls,

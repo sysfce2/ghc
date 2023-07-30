@@ -1806,22 +1806,40 @@ type checking. While viable, this would mean we'd end up accepting this:
 -- Note [Ordering of implicit variables].
 type FreeKiTyVars = [LocatedN RdrName]
 
+data TermVariableCapture =
+    CaptureTermVars
+  | DontCaptureTermVars
+
 -- | Filter out any type and kind variables that are already in scope in the
 -- the supplied LocalRdrEnv. Note that this includes named wildcards, which
 -- look like perfectly ordinary type variables at this point.
-filterInScope :: LocalRdrEnv -> FreeKiTyVars -> FreeKiTyVars
-filterInScope rdr_env = filterOut (inScope rdr_env . unLoc)
+filterInScope :: TermVariableCapture -> (GlobalRdrEnv, LocalRdrEnv) -> FreeKiTyVars -> FreeKiTyVars
+filterInScope tvc envs = filterOut (inScope tvc envs . unLoc)
 
 -- | Filter out any type and kind variables that are already in scope in the
 -- the environment's LocalRdrEnv. Note that this includes named wildcards,
 -- which look like perfectly ordinary type variables at this point.
 filterInScopeM :: FreeKiTyVars -> RnM FreeKiTyVars
 filterInScopeM vars
-  = do { rdr_env <- getLocalRdrEnv
-       ; return (filterInScope rdr_env vars) }
+  = do { required_type_arguments <- xoptM LangExt.RequiredTypeArguments
+       ; let tvc | required_type_arguments = CaptureTermVars
+                 | otherwise               = DontCaptureTermVars
+       ; envs <- getRdrEnvs
+       ; return (filterInScope tvc envs vars) }
 
-inScope :: LocalRdrEnv -> RdrName -> Bool
-inScope rdr_env rdr = rdr `elemLocalRdrEnv` rdr_env
+inScope :: TermVariableCapture -> (GlobalRdrEnv, LocalRdrEnv) -> RdrName -> Bool
+inScope tvc (gbl, lcl) rdr =
+  case tvc of
+    DontCaptureTermVars -> rdr_in_scope
+    CaptureTermVars     -> rdr_in_scope || demoted_rdr_in_scope
+  where
+    rdr_in_scope, demoted_rdr_in_scope :: Bool
+    rdr_in_scope         = elem_lcl rdr
+    demoted_rdr_in_scope = maybe False (elem_lcl <||> elem_gbl) (demoteRdrNameTv rdr)
+
+    elem_lcl, elem_gbl :: RdrName -> Bool
+    elem_lcl name = elemLocalRdrEnv name lcl
+    elem_gbl name = (not . null) (lookupGRE gbl (LookupRdrName name (RelevantGREsFOS WantBoth)))
 
 extract_tyarg :: LHsTypeArg GhcPs -> FreeKiTyVars -> FreeKiTyVars
 extract_tyarg (HsValArg ty) acc = extract_lty ty acc

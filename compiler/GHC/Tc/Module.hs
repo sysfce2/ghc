@@ -153,6 +153,7 @@ import GHC.Types.Annotations
 import GHC.Types.SrcLoc
 import GHC.Types.SourceFile
 import GHC.Types.PkgQual
+import GHC.Types.Unique.Set (getUniqSet)
 import qualified GHC.LanguageExtensions as LangExt
 
 import GHC.Unit.External
@@ -1604,7 +1605,8 @@ rnTopSrcDecls group
    }
 
 tcTopSrcDecls :: HsGroup GhcRn -> TcM (TcGblEnv, TcLclEnv)
-tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
+tcTopSrcDecls (HsGroup { hs_ext = all_bndrs,
+                         hs_tyclds = tycl_decls,
                          hs_derivds = deriv_decls,
                          hs_fords  = foreign_decls,
                          hs_defds  = default_decls,
@@ -1615,6 +1617,9 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
  = do {         -- Type-check the type and class decls, and all imported decls
                 -- The latter come in via tycl_decls
         traceTc "Tc2 (src)" empty ;
+
+                -- See Note [Demotion of unqualified variables] in GHC.Rename.Env
+        tcExtendKindEnv (mkTermVarPromErrEnv all_bndrs) $ do {
 
                 -- Source-language instances, including derivings,
                 -- and import the supporting declarations
@@ -1695,9 +1700,15 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
         addUsedGREs NoDeprecationWarnings (bagToList fo_gres) ;
 
         return (tcg_env', tcl_env)
-    }}}}}}
+    }}}}}}}
 
 tcTopSrcDecls _ = panic "tcTopSrcDecls: ValBindsIn"
+
+mkTermVarPromErrEnv :: NameSet -> NameEnv TcTyThing
+mkTermVarPromErrEnv all_bndrs = prom_err_env
+  where
+    prom_err_env = APromotionErr TermVariablePE <$ getUniqSet val_names
+    val_names = filterNameSet (isVarName <||> isFieldName) all_bndrs
 
 ---------------------------
 tcTyClsInstDecls :: [TyClGroup GhcRn]

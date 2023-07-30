@@ -1058,9 +1058,6 @@ lookupLocalOccRn rdr_name
 lookupTypeOccRn :: RdrName -> RnM Name
 -- see Note [Demotion]
 lookupTypeOccRn rdr_name
-  | (isVarOcc <||> isFieldOcc) (rdrNameOcc rdr_name)  -- See Note [Promoted variables in types]
-  = badVarInType rdr_name
-  | otherwise
   = do { mb_gre <- lookupOccRn_maybe rdr_name
        ; case mb_gre of
              Just gre -> return $ greName gre
@@ -1108,15 +1105,52 @@ lookup_demoted rdr_name
                                      | otherwise
                                      = star_is_type_hints
                     ; unboundNameX looking_for rdr_name suggestion } }
-  | Just demoted_rdr_name <- demoteRdrNameTv rdr_name,
-    isQual rdr_name
+
+  | isQual rdr_name,
+    Just demoted_rdr_name <- demoteRdrNameTv rdr_name
+    -- Definitely an illegal term variable, as type variables are never exported
   = report_qualified_term_in_types rdr_name demoted_rdr_name
 
+  | isUnqual rdr_name,
+    Just demoted_rdr_name <- demoteRdrNameTv rdr_name
+    -- See Note [Demotion of unqualified variables]
+  = do { required_type_arguments <- xoptM LangExt.RequiredTypeArguments
+       ; if required_type_arguments
+         then do { mb_demoted_gre <- lookupOccRn_maybe demoted_rdr_name
+                 ; case mb_demoted_gre of
+                     Nothing -> unboundName (LF WL_Anything WL_Anywhere) rdr_name
+                     Just demoted_gre -> return $ greName demoted_gre }
+         else unboundName looking_for rdr_name }
+
   | otherwise
-  = reportUnboundName' (lf_which looking_for) rdr_name
+  = unboundName looking_for rdr_name
 
   where
     looking_for = LF WL_Constructor WL_Anywhere
+
+{- Note [Demotion of unqualified variables]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Unqualified term variables may turn out to be type variables in disguise:
+
+  {-# LANGUAGE RequiredTypeArguments #-}
+  idv :: forall a -> a -> a
+  idv  t  (x :: t) = id @t x    -- #23739
+  --   ^        ^        ^
+  --  varName  tvName  tvName   -- NameSpace (GHC.Types.Name.Occurrence)
+
+The variable `t` is an alias for the type variable `a`, so it's valid to use it
+in type-level contexts. The only problem is that the namespaces do not match.
+Demotion allows us to connect the `tvName` usages to the `varName` binding.
+
+The side effect of demotion is that the renamer also allows actual term
+variables to occur at the type level:
+
+  t = True
+  x = Proxy @t     -- Not good!
+
+GHC doesn't promote arbitrary terms to types. This is rejected in the type
+checker via mkTermVarPromErrEnv.
+-}
 
 -- Report a qualified variable name in a type signature:
 --   badSig :: Prelude.head
@@ -1141,28 +1175,8 @@ lookup_promoted rdr_name
   | otherwise
   = return Nothing
 
-badVarInType :: RdrName -> RnM Name
-badVarInType rdr_name
-  = do { addErr (TcRnUnpromotableThing name TermVariablePE)
-       ; return name }
-      where
-        name = mkUnboundNameRdr rdr_name
-
-{- Note [Promoted variables in types]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Consider this (#12686):
-   x = True
-   data Bad = Bad 'x
-
-The parser treats the quote in 'x as saying "use the term
-namespace", so we'll get (Bad x{v}), with 'x' in the
-VarName namespace.  If we don't test for this, the renamer
-will happily rename it to the x bound at top level, and then
-the typecheck falls over because it doesn't have 'x' in scope
-when kind-checking.
-
-Note [Demotion]
-~~~~~~~~~~~~~~~
+{- Note [Demotion]
+~~~~~~~~~~~~~~~~~~
 When the user writes:
   data Nat = Zero | Succ Nat
   foo :: f Zero -> Int
