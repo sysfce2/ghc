@@ -59,7 +59,7 @@ import GHC.Types.Basic
 import GHC.Types.Tickish
 import GHC.Types.Var    ( isTyCoVar )
 import GHC.Types.Var.Set
-import GHC.Builtin.PrimOps ( PrimOp (SeqOp) )
+import GHC.Builtin.PrimOps ( PrimOp (SeqOp, DataToTagOp, TagToEnumOp) )
 import GHC.Builtin.Types.Prim( realWorldStatePrimTy )
 import GHC.Builtin.Names( runRWKey )
 
@@ -3783,13 +3783,22 @@ mkDupableContWithDmds env _
   where
     thumbsUpPlanA (StrictBind {})              = True
     thumbsUpPlanA (Stop {})                    = True
-    thumbsUpPlanA (Select {})                  = False -- Using Plan B benefits carryPropagate
+    thumbsUpPlanA (Select {})                  = dup_fun fun
+--                                                 False -- Using Plan B benefits carryPropagate
                                                        -- in nofib digits-of-e2
     thumbsUpPlanA (StrictArg {})               = False
     thumbsUpPlanA (CastIt { sc_cont = k })     = thumbsUpPlanA k
     thumbsUpPlanA (TickIt _ k)                 = thumbsUpPlanA k
     thumbsUpPlanA (ApplyToVal { sc_cont = k }) = thumbsUpPlanA k
     thumbsUpPlanA (ApplyToTy  { sc_cont = k }) = thumbsUpPlanA k
+
+    dup_fun fun | Just op <- isPrimOpId_maybe (ai_fun fun)
+                = case op of
+                     DataToTagOp -> True
+                     TagToEnumOp -> True
+                     _           -> False
+                | otherwise
+                = False
 
 mkDupableContWithDmds env dmds
     (ApplyToTy { sc_cont = cont, sc_arg_ty = arg_ty, sc_hole_ty = hole_ty })
@@ -3955,8 +3964,7 @@ mkDupableAlt _env case_bndr jfloats (Alt con alt_bndrs alt_rhs_in)
                 -- See Note [Duplicated env]
 
 ok_to_dup_alt :: OutId -> [OutVar] -> OutExpr -> Bool
--- See Note [Duplicating alternatives]
--- and Note [Duplicating join points] esp point (2)
+-- See Note [Duplicating join points] esp points (DJ2,DJ3)
 ok_to_dup_alt case_bndr alt_bndrs alt_rhs
   | exprIsTrivial alt_rhs
   = True   -- Includes things like (case x of {})
@@ -3964,7 +3972,7 @@ ok_to_dup_alt case_bndr alt_bndrs alt_rhs
   | (Var v, args) <- collectArgs alt_rhs
   , all exprIsTrivial args
   = if isJust (isDataConId_maybe v)
-    then -- See Note [Duplicating join points] for the
+    then -- See Note [Duplicating join points] (DJ3) for the
          -- reason for this apparently strange test
          exprsFreeIds args `subVarSet` bndr_set
     else True  -- Duplicating a simple call (f a b c) is fine,
@@ -4016,7 +4024,7 @@ Wrinkle
       where $j is a freshly-born join point.  After case-of-known-constructor
       wo we end up substituting (join $j x = <rhs> in jblah) for `y` in `blah`;
       and thus we re-simplify that join binding.  In test T15630 this results in
-      masssive duplication.
+      massive duplication.
 
       So in `simplLetUnfolding` we spot this case a bit hackily; a freshly-born
       join point will have OccInfo of ManyOccs, unlike an existing join point which
@@ -4026,30 +4034,6 @@ Wrinkle
 I can't quite articulate precisely why this is so important.  But it makes a MASSIVE
 difference in T15630 (a fantastic test case); and at worst it'll merely delay inlining
 join points by one simplifier iteration.
-
-Note [Duplicating alternatives]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When should we duplicate an alternative, and when should we make a join point?
-We don't want to make a join point if it will /definitely/ be inlined; that
-just takes extra work to build, and an extra Simplifier iteration to do the
-inlining.  So consider
-
-   case (case x of True -> e2; False -> e2) of
-     K1 a b -> f b a
-     K2 x   -> g x v
-     K3 v   -> Just v
-
-The (f b a) would turn into a join point like
-   $j1 a b = f b a
-which would immediately inline again because the call is not smaller than the RHS.
-On the other hand, the (g x v) turns into
-   $j2 x = g x v
-which won't imediately inline, because the call $j2 x is smaller than the RHS
-(g x v).  Finally the (Just v) would turn into
-   $j3 v = Just v
-and you might think that would immediately inline.
-
-TODO -- more here
 
 Note [Fusing case continuations]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -4094,7 +4078,7 @@ inlining join points.   Consider
       K g y -> blah[g,y]
 
 Here the join-point RHS is very small, just a constructor
-application (K x y).  So we might inline it to get
+application (K f x).  So we might inline it to get
     case (case v of          )
          (     p1 -> K f x1  ) of
          (     p2 -> K f x2  )
@@ -4115,50 +4099,55 @@ what `f` is, instead of lambda-abstracting over it.
 
 To achieve this:
 
-1. Do not postInlineUnconditionally a join point, ever. Doing
+(DJ1) Do not postInlineUnconditionally a join point, ever. Doing
    postInlineUnconditionally is primarily to push allocation into cold
    branches; but a join point doesn't allocate, so that's a non-motivation.
 
-2. In mkDupableAlt and mkDupableStrictBind, generate an alterative for all
-   alternatives, except for exprIsTrival RHSs (see `ok_to_dup_alt`).  Previously
-   we used exprIsDupable.  This generates a lot more join points, but makes them
-   much more case-of-case friendly.
+(DJ2) In mkDupableAlt and mkDupableStrictBind, generate an alterative for /all/
+   alternatives, /except/ for ones that will definitely inline unconditionally
+   straight away.  (In that case it's silly to make a join point in the first
+   place; it just takes an extra Simplifier iteration to undo.)  This choice is
+   made by `ok_to_dup_alt`.
 
-   We are happy to duplicate
-       j a b = K b a
-   where all the arguments of the constructor are parameters of the join point
-   because then the "massive difference" described above can't happen.
+   This plan generates a lot of join points, but makes them much more
+   case-of-case friendly.
 
-   It is definitely worth checking for exprIsTrivial, otherwise we get
-   an extra Simplifier iteration, because it is inlined in the next
-   round.
+(DJ3) When does a join point definitely inline unconditionally?  That is, when
+   the UnfoldingGuidance is UnfWhen: the rhs of the join point is smaller than
+   the call.  More specifically `ok_to_dup_alt` looks for
+   * (exprIsTrivial rhs); this includes uses of unsafeEqualityProof etc; seee
+     the defn of exprIsTrivial.
+   * the RHS is a call (f x y z), where the arguments are all trivial and f is not
+     data constructor
+   * if the RHS /is/ a data constructor we check whether all the args are bound by
+     the join-point lambdas; if so there is no point in creating a join point. But
+     if not (e.g. j x = K f x), then we /do/ want to creat a join point; see
+     the discussion of #19996 above.
 
-3. By the same token we want to use Plan B in
-   Note [Duplicating StrictArg] when the RHS of the new join point
-   is a data constructor application.  See the call to isDataConId in
-   the StrictArg case of mkDupableContWithDmds.
+(DJ4) By the same token we want to use Plan B in Note [Duplicating StrictArg] when
+   the RHS of the new join point is a data constructor application.  See the
+   call to isDataConId in the StrictArg case of mkDupableContWithDmds.
 
-   That same Note [Duplicating StrictArg] explains why we sometimes
-   want Plan A when the RHS of the new join point would be a
-   non-data-constructor application
+   That same Note [Duplicating StrictArg] explains why we sometimes want Plan A
+   when the RHS of the new join point would be a non-data-constructor
+   application
 
-4. You might worry that $j will be inlined by the call-site inliner,
-   but it won't because the call-site context for a join is usually
-   extremely boring (the arguments come from the pattern match).
-   And if not, then perhaps inlining it would be a good idea.
+(DJ5) You might worry that $j will be inlined by the call-site inliner, but it
+   won't because the call-site context for a join is usually extremely boring
+   (the arguments come from the pattern match).  And if not, then perhaps
+   inlining it would be a good idea.
 
-   You might also wonder if we get UnfWhen, because the RHS of the
-   join point is no bigger than the call. But in the cases we care
-   about it will be a little bigger, because of that free `f` in
-       $j x = K f x
-   So for now we don't do anything special in callSiteInline
+   You might also wonder if we get UnfWhen, because the RHS of the join point is
+   no bigger than the call. But in the cases we care about it will be a little
+   bigger, because of that free `f` in $j x = K f x So for now we don't do
+   anything special in callSiteInline
 
-There is a bit of tension between (2) and (3).  Do we want to retain
+There is a bit of tension between (DJ2) and (DJ3).  Do we want to retain
 the join point only when the RHS is
 * a constructor application? or
 * just non-trivial?
 Currently, a bit ad-hoc, but we definitely want to retain the join
-point for data constructors in mkDupableALt (point 2); that is the
+point for data constructors in mkDupableALt (DJ2); that is the
 whole point of #19996 described above.
 
 Historical Note [Case binders and join points]
@@ -4566,17 +4555,6 @@ Wrinkles
 * Don't eta-expand join points; see Note [Do not eta-expand join points]
   in GHC.Core.Opt.Simplify.Utils.  We uphold this because the join-point
   case (bind_cxt = BC_Join {}) doesn't use eta_expand.
-
-Note [Heavily used join points]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-After inining join points we can end up with
-  let $j x = <rhs>
-  in case x1 of
-     True -> case x2 of
-                True -> $j blah1
-                False -> $j blah2
-     False -> case x3 of ....
-with a huge case tree
 
 Note [Force bottoming field]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

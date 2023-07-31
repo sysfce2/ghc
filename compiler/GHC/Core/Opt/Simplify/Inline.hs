@@ -214,7 +214,7 @@ Reflections and wrinkles
 * See also Note [Do not add unfoldings to join points at birth] in
   GHC.Core.Opt.Simplify.Iteration
 
-* The case total case depth is really the wrong thing; it will inhibit inlining of a
+* The total case depth is really the wrong thing; it will inhibit inlining of a
   local function, just because there is some giant case nest further out.  What we
   want is the /difference/ in case-depth between the binding site and the call site.
   That could be done quite easily by adding the case-depth to the Unfolding of the
