@@ -58,7 +58,7 @@ import GHC.Types.Unique ( hasKey )
 import GHC.Types.Basic
 import GHC.Types.Tickish
 import GHC.Types.Var    ( isTyCoVar )
-import GHC.Types.Var.Set
+-- import GHC.Types.Var.Set
 import GHC.Builtin.PrimOps ( PrimOp (SeqOp, DataToTagOp, TagToEnumOp) )
 import GHC.Builtin.Types.Prim( realWorldStatePrimTy )
 import GHC.Builtin.Names( runRWKey )
@@ -3963,7 +3963,7 @@ mkDupableAlt _env case_bndr jfloats (Alt con alt_bndrs alt_rhs_in)
 
 ok_to_dup_alt :: OutId -> [OutVar] -> OutExpr -> Bool
 -- See Note [Duplicating join points] esp points (DJ2,DJ3)
-ok_to_dup_alt case_bndr alt_bndrs alt_rhs
+ok_to_dup_alt _case_bndr _alt_bndrs alt_rhs
   | exprIsTrivial alt_rhs
   = True   -- Includes things like (case x of {})
 
