@@ -887,12 +887,14 @@ bindHsQTyVars doc mb_assoc body_kv_occs hsq_bndrs thing_inside
 
        ; let -- See Note [bindHsQTyVars examples] for what
              -- all these various things are doing
-             bndrs, implicit_kvs :: [LocatedN RdrName]
+             bndrs, implicit_kvs' :: [LocatedN RdrName]
              bndrs        = map hsLTyVarLocName hs_tv_bndrs
-             implicit_kvs = filterFreeVarsToBind bndrs $
+             implicit_kvs' = filterFreeVarsToBind bndrs $
                bndr_kv_occs ++ body_kv_occs
              body_remaining = filterFreeVarsToBind bndr_kv_occs $
               filterFreeVarsToBind bndrs body_kv_occs
+
+       ; implicit_kvs <- filterInScopeM implicit_kvs'
 
        ; traceRn "checkMixedVars3" $
            vcat [ text "bndrs"   <+> ppr hs_tv_bndrs
