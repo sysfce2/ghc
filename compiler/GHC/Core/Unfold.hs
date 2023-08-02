@@ -239,16 +239,17 @@ inlineBoringOk e
 calcUnfoldingGuidance
         :: UnfoldingOpts
         -> Bool          -- Definitely a top-level, bottoming binding
+        -> Bool          -- True <=> join point
         -> CoreExpr      -- Expression to look at
         -> UnfoldingGuidance
-calcUnfoldingGuidance opts is_top_bottoming (Tick t expr)
+calcUnfoldingGuidance opts is_top_bottoming is_join (Tick t expr)
   | not (tickishIsCode t)  -- non-code ticks don't matter for unfolding
-  = calcUnfoldingGuidance opts is_top_bottoming expr
-calcUnfoldingGuidance opts is_top_bottoming expr
+  = calcUnfoldingGuidance opts is_top_bottoming is_join expr
+calcUnfoldingGuidance opts is_top_bottoming is_join expr
   = case sizeExpr opts bOMB_OUT_SIZE val_bndrs body of
       TooBig -> UnfNever
       SizeIs size cased_bndrs scrut_discount
-        | uncondInline expr n_val_bndrs size
+        | uncondInline is_join expr n_val_bndrs body size
         -> UnfWhen { ug_unsat_ok = unSaturatedOk
                    , ug_boring_ok =  boringCxtOk
                    , ug_arity = n_val_bndrs }   -- Note [INLINE for small functions]
@@ -414,11 +415,14 @@ sharing the wrapper closure.
 The solution: don’t ignore coercion arguments after all.
 -}
 
-uncondInline :: CoreExpr -> Arity -> Int -> Bool
+uncondInline :: Bool -> CoreExpr -> Arity -> CoreExpr -> Int -> Bool
 -- Inline unconditionally if there no size increase
 -- Size of call is arity (+1 for the function)
 -- See Note [INLINE for small functions]
-uncondInline rhs arity size
+uncondInline is_join rhs arity body size
+  | is_join   = case collectArgs body of
+                  (Var {}, args) -> all exprIsTrivial args
+                  _              -> False
   | arity > 0 = size <= 10 * (arity + 1) -- See Note [INLINE for small functions] (1)
   | otherwise = exprIsTrivial rhs        -- See Note [INLINE for small functions] (4)
 

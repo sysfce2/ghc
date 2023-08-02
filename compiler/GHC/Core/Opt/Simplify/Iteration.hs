@@ -631,7 +631,7 @@ tryCastWorkerWrapper env bind_cxt old_bndr bndr (Cast rhs co)
                            , extendIdSubst (setInScopeFromF env floats) old_bndr $
                              DoneEx triv_rhs NotJoinPoint ) }
 
-          else do { wrap_unf <- mkLetUnfolding uf_opts top_lvl VanillaSrc bndr triv_rhs
+          else do { wrap_unf <- mkLetUnfolding env top_lvl VanillaSrc bndr False triv_rhs
                   ; let bndr' = bndr `setInlinePragma` mkCastWrapperInlinePrag (idInlinePragma bndr)
                                 `setIdUnfolding`  wrap_unf
                         floats' = floats `extendFloats` NonRec bndr' triv_rhs
@@ -639,7 +639,6 @@ tryCastWorkerWrapper env bind_cxt old_bndr bndr (Cast rhs co)
   where
     -- Force the occ_fs so that the old Id is not retained in the new Id.
     !occ_fs = getOccFS bndr
-    uf_opts = seUnfoldingOpts env
     work_ty = coercionLKind co
     info   = idInfo bndr
     work_arity = arityInfo info `min` typeArity work_ty
@@ -662,7 +661,7 @@ tryCastWorkerWrapper env bind_cxt old_bndr bndr (Cast rhs co)
       = case realUnfoldingInfo info of -- NB: the real one, even for loop-breakers
            unf@(CoreUnfolding { uf_tmpl = unf_rhs, uf_src = src })
              | isStableSource src -> return (unf { uf_tmpl = mkCast unf_rhs (mkSymCo co) })
-           _ -> mkLetUnfolding uf_opts top_lvl VanillaSrc work_id work_rhs
+           _ -> mkLetUnfolding env top_lvl VanillaSrc work_id False work_rhs
 
 tryCastWorkerWrapper env _ _ bndr rhs  -- All other bindings
   = do { traceSmpl "tcww:no" (vcat [ text "bndr:" <+> ppr bndr
@@ -849,7 +848,7 @@ makeTrivial env top_lvl dmd occ_fs expr
           -- the 'floats' from prepareRHS; but they are all fresh, so there is
           -- no danger of introducing name shadowig in eta expansion
 
-        ; unf <- mkLetUnfolding uf_opts top_lvl VanillaSrc var expr2
+        ; unf <- mkLetUnfolding env top_lvl VanillaSrc var False expr2
 
         ; let final_id = addLetBndrInfo var arity_type unf
               bind     = NonRec final_id expr2
@@ -859,7 +858,6 @@ makeTrivial env top_lvl dmd occ_fs expr
   where
     id_info = vanillaIdInfo `setDemandInfo` dmd
     expr_ty = exprType expr
-    uf_opts = seUnfoldingOpts env
 
 bindingOk :: TopLevelFlag -> CoreExpr -> Type -> Bool
 -- True iff we can have a binding of this expression at this level
@@ -3785,7 +3783,7 @@ mkDupableContWithDmds env _
     thumbsUpPlanA (Stop {})                    = True
     thumbsUpPlanA (Select {})                  = dup_fun fun
 --                                                 False -- Using Plan B benefits carryPropagate
-                                                       -- in nofib digits-of-e2
+                                                         -- in nofib digits-of-e2
     thumbsUpPlanA (StrictArg {})               = False
     thumbsUpPlanA (CastIt { sc_cont = k })     = thumbsUpPlanA k
     thumbsUpPlanA (TickIt _ k)                 = thumbsUpPlanA k
@@ -3974,7 +3972,7 @@ ok_to_dup_alt case_bndr alt_bndrs alt_rhs
   = if isJust (isDataConId_maybe v)
     then -- See Note [Duplicating join points] (DJ3) for the
          -- reason for this apparently strange test
-         exprsFreeIds args `subVarSet` bndr_set
+         False -- exprsFreeIds args `subVarSet` bndr_set
     else True  -- Duplicating a simple call (f a b c) is fine,
                -- (especially if f is itself a join point).
 
@@ -4411,29 +4409,29 @@ simplLetUnfolding env bind_cxt id new_rhs rhs_ty arity unf
   | isStableUnfolding unf
   = simplStableUnfolding env bind_cxt id rhs_ty arity unf
 
-  | isExitJoinId id
-  = -- See Note [Do not inline exit join points] in GHC.Core.Opt.Exitify
-    return noUnfolding
-
   | freshly_born_join_point id
   = -- This is a tricky one!
     -- See wrinkle (JU1) in Note [Do not add unfoldings to join points at birth]
     return noUnfolding
 
+  | isExitJoinId id
+  = -- See Note [Do not inline exit join points] in GHC.Core.Opt.Exitify
+    return noUnfolding
+
   | otherwise
-  = -- Otherwise, we end up retaining all the SimpleEnv
-    let !opts = seUnfoldingOpts env
-    in mkLetUnfolding opts (bindContextLevel bind_cxt) VanillaSrc id new_rhs
+  = mkLetUnfolding env (bindContextLevel bind_cxt) VanillaSrc id is_join_point new_rhs
 
   where
-    freshly_born_join_point id = isJoinId id && isManyOccs (idOccInfo id)
+    is_join_point = isJoinId id
+    freshly_born_join_point id = is_join_point && isManyOccs (idOccInfo id)
       -- OLD: too_many_occs (OneOcc { occ_n_br = n }) = n > 10 -- See #23627
 
 -------------------
-mkLetUnfolding :: UnfoldingOpts -> TopLevelFlag -> UnfoldingSource
-               -> InId -> OutExpr -> SimplM Unfolding
-mkLetUnfolding !uf_opts top_lvl src id new_rhs
-  = return (mkUnfolding uf_opts src is_top_lvl is_bottoming new_rhs Nothing)
+mkLetUnfolding :: SimplEnv -> TopLevelFlag -> UnfoldingSource
+               -> InId -> Bool    -- True <=> this is a join point
+               -> OutExpr -> SimplM Unfolding
+mkLetUnfolding env top_lvl src id is_join new_rhs
+  = return (mkUnfolding uf_opts src is_top_lvl is_bottoming is_join new_rhs Nothing)
             -- We make an  unfolding *even for loop-breakers*.
             -- Reason: (a) It might be useful to know that they are WHNF
             --         (b) In GHC.Iface.Tidy we currently assume that, if we want to
@@ -4441,8 +4439,11 @@ mkLetUnfolding !uf_opts top_lvl src id new_rhs
             --             to expose.  (We could instead use the RHS, but currently
             --             we don't.)  The simple thing is always to have one.
   where
-    -- Might as well force this, profiles indicate up to 0.5MB of thunks
-    -- just from this site.
+    -- !opts: otherwise, we end up retaining all the SimpleEnv
+    !uf_opts = seUnfoldingOpts env
+
+    -- Might as well force this, profiles indicate up to
+    -- 0.5MB of thunks just from this site.
     !is_top_lvl   = isTopLevel top_lvl
     -- See Note [Force bottoming field]
     !is_bottoming = isDeadEndId id
@@ -4497,14 +4498,13 @@ simplStableUnfolding env bind_cxt id rhs_ty id_arity unf
                             -- See Note [Top-level flag on inline rules] in GHC.Core.Unfold
 
                   _other              -- Happens for INLINABLE things
-                     -> mkLetUnfolding uf_opts top_lvl src id expr' }
+                     -> mkLetUnfolding env top_lvl src id False expr' }
                 -- If the guidance is UnfIfGoodArgs, this is an INLINABLE
                 -- unfolding, and we need to make sure the guidance is kept up
                 -- to date with respect to any changes in the unfolding.
 
         | otherwise -> return noUnfolding   -- Discard unstable unfoldings
   where
-    uf_opts    = seUnfoldingOpts env
     -- Forcing this can save about 0.5MB of max residency and the result
     -- is small and easy to compute so might as well force it.
     top_lvl     = bindContextLevel bind_cxt

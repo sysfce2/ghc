@@ -303,13 +303,17 @@ tryUnfolding logger opts !case_depth !inline_depth id lone_variable arg_infos
           enough_args  = (n_val_args >= uf_arity) || (unsat_ok && n_val_args > 0)
 
      UnfIfGoodArgs { ug_args = arg_discounts, ug_res = res_discount, ug_size = size }
-        | unfoldingVeryAggressive opts
-        -> traceInline logger opts id str (mk_doc some_benefit extra_doc True) (Just unf_template)
-        | is_wf && some_benefit && small_enough
-        -> traceInline logger opts id str (mk_doc some_benefit extra_doc True) (Just unf_template)
-        | otherwise
-        -> traceInline logger opts id str (mk_doc some_benefit extra_doc False) Nothing
+        | isJoinId id
+        -> if or (zipWith scrut_arg arg_discounts arg_infos) && small_enough
+           then yes
+           else no
+        | unfoldingVeryAggressive opts          -> yes
+        | is_wf && some_benefit && small_enough -> yes
+        | otherwise                             -> no
         where
+          yes = traceInline logger opts id str (mk_doc some_benefit extra_doc True)  (Just unf_template)
+          no  = traceInline logger opts id str (mk_doc some_benefit extra_doc False) Nothing
+
           some_benefit = calc_some_benefit (length arg_discounts)
           -- See Note [Avoid inlining into deeply nested cases]
           depth_treshold = unfoldingCaseThreshold opts
@@ -322,6 +326,11 @@ tryUnfolding logger opts !case_depth !inline_depth id lone_variable arg_infos
 
           extra_doc = vcat [ text "depth based penalty =" <+> int depth_penalty
                            , text "discounted size =" <+> int adjusted_size ]
+
+          -- True if the function body has a discount and the arg is a value
+          scrut_arg disc ValueArg = disc > 0
+          scrut_arg _    _        = False
+
   where
     -- Unpack the UnfoldingCache lazily because it may not be needed, and all
     -- its fields are strict; so evaluating unf_cache at all forces all the

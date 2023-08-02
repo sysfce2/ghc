@@ -1131,6 +1131,7 @@ lvlBind env (AnnNonRec bndr rhs)
                     --   (simplifier gets rid of them pronto)
   || isCoVar bndr   -- Difficult to fix up CoVar occurrences (see extendPolyLvlEnv)
                     -- so we will ignore this case for now
+  || isJoinId bndr  -- Don't float join points
   || not (profitableFloat env dest_lvl)
   || (isTopLvl dest_lvl && not (exprIsTopLevelBindable deann_rhs bndr_ty))
           -- We can't float an unlifted binding to top level (except
