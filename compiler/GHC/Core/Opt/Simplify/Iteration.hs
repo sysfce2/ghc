@@ -43,7 +43,7 @@ import GHC.Core.Opt.Arity ( ArityType, exprArity, arityTypeBotSigs_maybe
                           , pushCoTyArg, pushCoValArg, exprIsDeadEnd
                           , typeArity, arityTypeArity, etaExpandAT )
 import GHC.Core.SimpleOpt ( exprIsConApp_maybe, joinPointBinding_maybe, joinPointBindings_maybe )
-import GHC.Core.FVs     ( mkRuleInfo, exprsFreeIds )
+import GHC.Core.FVs     ( mkRuleInfo {- exprsFreeIds -} )
 import GHC.Core.Rules   ( lookupRule, getRules )
 import GHC.Core.Multiplicity
 
@@ -3978,8 +3978,8 @@ ok_to_dup_alt case_bndr alt_bndrs alt_rhs
 
   | otherwise
   = False
-  where
-    bndr_set = mkVarSet (case_bndr : alt_bndrs)
+--  where
+--    bndr_set = mkVarSet (case_bndr : alt_bndrs)
 
 {-
 Note [Do not add unfoldings to join points at birth]
