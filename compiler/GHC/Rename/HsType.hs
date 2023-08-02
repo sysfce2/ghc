@@ -866,7 +866,7 @@ bindSigTyVarsFV tvs thing_inside
 ---------------
 bindHsQTyVars :: forall a b.
                  HsDocContext
-              -> Maybe a            -- Just _  => an associated type decl
+              -> Maybe (a, [Name])  -- Just _  => an associated type decl
               -> FreeKiTyVars       -- Kind variables from scope
               -> LHsQTyVars GhcPs
               -> (LHsQTyVars GhcRn -> FreeKiTyVars -> RnM (b, FreeVars))
@@ -887,14 +887,22 @@ bindHsQTyVars doc mb_assoc body_kv_occs hsq_bndrs thing_inside
 
        ; let -- See Note [bindHsQTyVars examples] for what
              -- all these various things are doing
-             bndrs, implicit_kvs' :: [LocatedN RdrName]
+             bndrs, all_implicit_kvs :: [LocatedN RdrName]
              bndrs        = map hsLTyVarLocName hs_tv_bndrs
-             implicit_kvs' = filterFreeVarsToBind bndrs $
+             all_implicit_kvs = filterFreeVarsToBind bndrs $
                bndr_kv_occs ++ body_kv_occs
              body_remaining = filterFreeVarsToBind bndr_kv_occs $
               filterFreeVarsToBind bndrs body_kv_occs
 
-       ; implicit_kvs <- filterInScopeM implicit_kvs'
+             tycl_bndrs = case mb_assoc of
+                Nothing -> emptyOccSet
+                Just (_, bndrs') -> mkOccSet (map nameOccName bndrs')
+             mentioned_tycl_bndrs = filter (\(L _ n) -> occName n `elemOccSet` tycl_bndrs) all_implicit_kvs
+
+
+       ; implicit_kvs' <- filterInScopeM all_implicit_kvs
+
+       ; let implicit_kvs = mentioned_tycl_bndrs ++ implicit_kvs'
 
        ; traceRn "checkMixedVars3" $
            vcat [ text "bndrs"   <+> ppr hs_tv_bndrs
