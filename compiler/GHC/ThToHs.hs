@@ -1321,6 +1321,7 @@ cvtStmt (TH.LetS ds)   = do { ds' <- cvtLocalDecs LetBinding ds
 cvtStmt (TH.ParS dss)  = do { dss' <- mapM cvt_one dss
                             ; returnLA $ ParStmt noExtField dss' noExpr noSyntaxExpr }
   where
+    cvt_one :: [TH.Stmt] -> CvtM (ParStmtBlock GhcPs GhcPs) -- "RAE" remove this type signature
     cvt_one ds = do { ds' <- cvtStmts ds
                     ; return (ParStmtBlock noExtField ds' undefined noSyntaxExpr) }
 cvtStmt (TH.RecS ss) = do { ss' <- mapM cvtStmt ss
