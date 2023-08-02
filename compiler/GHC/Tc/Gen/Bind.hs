@@ -189,13 +189,14 @@ Then we get
                                fm
 -}
 
-tcTopBinds :: [(RecFlag, LHsBinds GhcRn)] -> [LSig GhcRn]
+tcTopBinds :: (forall a. TcM a -> TcM a)
+           -> [(RecFlag, LHsBinds GhcRn)] -> [LSig GhcRn]
            -> TcM (TcGblEnv, TcLclEnv)
 -- The TcGblEnv contains the new tcg_binds and tcg_spects
 -- The TcLclEnv has an extended type envt for the new bindings
-tcTopBinds binds sigs
+tcTopBinds no_terms binds sigs
   = do  { -- Pattern synonym bindings populate the global environment
-          (binds', (tcg_env, tcl_env)) <- tcValBinds TopLevel binds sigs getEnvs
+          (binds', (tcg_env, tcl_env)) <- tcValBinds no_terms TopLevel binds sigs getEnvs
         ; specs <- tcImpPrags sigs   -- SPECIALISE prags for imported Ids
 
         ; complete_matches <- restoreEnvs (tcg_env, tcl_env) $ tcCompleteSigs sigs
@@ -258,7 +259,7 @@ tcLocalBinds (EmptyLocalBinds x) thing_inside
         ; return (EmptyLocalBinds x, thing) }
 
 tcLocalBinds (HsValBinds x (XValBindsLR (NValBinds binds sigs))) thing_inside
-  = do  { (binds', thing) <- tcValBinds NotTopLevel binds sigs thing_inside
+  = do  { (binds', thing) <- tcValBinds id NotTopLevel binds sigs thing_inside
         ; return (HsValBinds x (XValBindsLR (NValBinds binds' sigs)), thing) }
 tcLocalBinds (HsValBinds _ (ValBinds {})) _ = panic "tcLocalBinds"
 
@@ -297,17 +298,19 @@ tcLocalBinds (HsIPBinds x (IPBinds _ ip_binds)) thing_inside
     toDict ipClass x ty = mkHsWrap $ mkWpCastR $
                           wrapIP $ mkClassPred ipClass [x,ty]
 
-tcValBinds :: TopLevelFlag
+tcValBinds :: (forall a. TcM a -> TcM a)
+           -> TopLevelFlag
            -> [(RecFlag, LHsBinds GhcRn)] -> [LSig GhcRn]
            -> TcM thing
            -> TcM ([(RecFlag, LHsBinds GhcTc)], thing)
 
-tcValBinds top_lvl binds sigs thing_inside
+tcValBinds no_terms top_lvl binds sigs thing_inside
   = do  {   -- Typecheck the signatures
             -- It's easier to do so now, once for all the SCCs together
             -- because a single signature  f,g :: <type>
             -- might relate to more than one SCC
-          (poly_ids, sig_fn) <- tcAddPatSynPlaceholders patsyns $
+          (poly_ids, sig_fn) <- no_terms $
+                                tcAddPatSynPlaceholders patsyns $
                                 tcTySigs sigs
 
         -- Extend the envt right away with all the Ids
