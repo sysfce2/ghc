@@ -592,9 +592,22 @@ substDVarSet subst@(Subst _ _ tv_env cv_env) fvs
 ------------------
 substTickish :: Subst -> CoreTickish -> CoreTickish
 substTickish subst (Breakpoint ext n ids modl)
-   = Breakpoint ext n (mapMaybe do_one ids) modl
+   = Breakpoint ext n (filter not_datacon (mapMaybe do_one ids)) modl
  where
     do_one = getIdFromTrivialExpr_maybe . lookupIdSubst subst
+
+    -- If a variable is substituted with a constructor, there's no point in
+    -- inspecting it anymore, and it would cause problems with the dependency
+    -- computation when fingerprinting iface decls, since it pulls in the name
+    -- of the tycon even when it's not in the decl's OccEnv.
+    not_datacon s
+      | isId s
+      = case idDetails s of
+        DataConWorkId {} -> False
+        DataConWrapId {} -> False
+        _ -> True
+      | otherwise = True
+
 substTickish _subst other = other
 
 {- Note [Substitute lazily]

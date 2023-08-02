@@ -237,3 +237,5 @@ test('MulMayOflo_full',
         ignore_stdout],
      multi_compile_and_run,
      ['MulMayOflo', [('MulMayOflo_full.cmm', '')], ''])
+
+test('T23612', only_ways(['ghci-opt']), ghci_script, ['T23612.script'])
