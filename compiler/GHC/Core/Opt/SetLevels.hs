@@ -87,12 +87,7 @@ import GHC.Prelude
 
 import GHC.Core
 import GHC.Core.Opt.Monad ( FloatOutSwitches(..) )
-import GHC.Core.Utils   ( exprType, exprIsHNF
-                        , exprOkForSpeculation
-                        , exprIsTopLevelBindable
-                        , collectMakeStaticArgs
-                        , mkLamTypes, extendInScopeSetBndrs
-                        )
+import GHC.Core.Utils
 import GHC.Core.Opt.Arity   ( exprBotStrictness_maybe, isOneShotBndr )
 import GHC.Core.FVs     -- all of it
 import GHC.Core.Subst
@@ -1127,17 +1122,7 @@ lvlBind :: LevelEnv
         -> LvlM (LevelledBind, LevelEnv)
 
 lvlBind env (AnnNonRec bndr rhs)
-  | isTyVar bndr    -- Don't do anything for TyVar binders
-                    --   (simplifier gets rid of them pronto)
-  || isCoVar bndr   -- Difficult to fix up CoVar occurrences (see extendPolyLvlEnv)
-                    -- so we will ignore this case for now
-  || isJoinId bndr  -- Don't float join points
-  || not (profitableFloat env dest_lvl)
-  || (isTopLvl dest_lvl && not (exprIsTopLevelBindable deann_rhs bndr_ty))
-          -- We can't float an unlifted binding to top level (except
-          -- literal strings), so we don't float it at all.  It's a
-          -- bit brutal, but unlifted bindings aren't expensive either
-
+  | dontFloatNonRec env dest_lvl is_bot_lam bndr bndr_ty deann_rhs
   = -- No float
     do { rhs' <- lvlRhs env NonRecursive is_bot_lam mb_join_arity rhs
        ; let  bind_lvl        = incMinorLvl (le_ctxt_lvl env)
@@ -1270,6 +1255,30 @@ lvlBind env (AnnRec pairs)
     ty_fvs   = foldr (unionVarSet . tyCoVarsOfType . idType) emptyVarSet bndrs
     dest_lvl = destLevel env bind_fvs ty_fvs is_fun is_bot is_join
     abs_vars = abstractVars dest_lvl env bind_fvs
+
+dontFloatNonRec :: LevelEnv -> Level -> Bool
+                -> Id -> Type -> CoreExpr -> Bool
+dontFloatNonRec env dest_lvl is_bot bndr bndr_ty deann_rhs
+  | isTyVar bndr           -- Don't do anything for TyVar binders
+  = True                   --   (simplifier gets rid of them pronto)
+  | isCoVar bndr           -- Difficult to fix up CoVar occurrences (see extendPolyLvlEnv)
+  = True                    -- so we will ignore this case for now
+
+  | not (profitableFloat env dest_lvl)
+  = True
+
+  | JoinPoint join_arity <- idJoinPointHood bndr
+  , let (_, body) = collectNBinders join_arity deann_rhs
+  = not (isTopLvl dest_lvl) || (not is_bot && exprIsCheap body)
+
+  | isTopLvl dest_lvl
+  , not (exprIsTopLevelBindable deann_rhs bndr_ty)
+  = True     -- We can't float an unlifted binding to top level (except
+             -- literal strings), so we don't float it at all.  It's a
+             -- bit brutal, but unlifted bindings aren't expensive either
+
+  | otherwise
+  = False
 
 profitableFloat :: LevelEnv -> Level -> Bool
 profitableFloat env dest_lvl

@@ -63,7 +63,7 @@ import GHC.Builtin.PrimOps ( PrimOp (SeqOp, DataToTagOp, TagToEnumOp) )
 import GHC.Builtin.Types.Prim( realWorldStatePrimTy )
 import GHC.Builtin.Names( runRWKey )
 
-import GHC.Data.Maybe   ( isNothing, isJust, orElse, mapMaybe )
+import GHC.Data.Maybe   ( isNothing, orElse, mapMaybe )
 import GHC.Data.FastString
 import GHC.Unit.Module ( moduleName )
 import GHC.Utils.Outputable
@@ -3969,12 +3969,16 @@ ok_to_dup_alt _case_bndr _alt_bndrs alt_rhs
 
   | (Var v, args) <- collectArgs alt_rhs
   , all exprIsTrivial args
-  = if isJust (isDataConId_maybe v)
+  , Nothing <- isDataConId_maybe v
+  = True
+{-
+    if isJust (isDataConId_maybe v)
     then -- See Note [Duplicating join points] (DJ3) for the
          -- reason for this apparently strange test
-         False -- exprsFreeIds args `subVarSet` bndr_set
+         exprsFreeIds args `subVarSet` bndr_set
     else True  -- Duplicating a simple call (f a b c) is fine,
                -- (especially if f is itself a join point).
+-}
 
   | otherwise
   = False

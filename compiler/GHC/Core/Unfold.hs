@@ -54,6 +54,7 @@ import GHC.Utils.Outputable
 import GHC.Types.ForeignCall
 import GHC.Types.Tickish
 
+import Data.Maybe( isJust )
 import qualified Data.ByteString as BS
 
 -- | Unfolding options
@@ -421,8 +422,8 @@ uncondInline :: Bool -> CoreExpr -> Arity -> CoreExpr -> Int -> Bool
 -- See Note [INLINE for small functions]
 uncondInline is_join rhs arity body size
   | is_join   = case collectArgs body of
-                  (Var {}, args) -> all exprIsTrivial args
-                  _              -> False
+                  (Var v, args) -> not (isJust (isDataConId_maybe v)) && all exprIsTrivial args
+                  _             -> False
   | arity > 0 = size <= 10 * (arity + 1) -- See Note [INLINE for small functions] (1)
   | otherwise = exprIsTrivial rhs        -- See Note [INLINE for small functions] (4)
 
