@@ -1267,18 +1267,20 @@ dontFloatNonRec env dest_lvl is_bot bndr bndr_ty deann_rhs
   | not (profitableFloat env dest_lvl)
   = True
 
-  | JoinPoint join_arity <- idJoinPointHood bndr
-  , let (_, body) = collectNBinders join_arity deann_rhs
-  = not (isTopLvl dest_lvl) || (not is_bot && exprIsCheap body)
-
   | isTopLvl dest_lvl
   , not (exprIsTopLevelBindable deann_rhs bndr_ty)
   = True     -- We can't float an unlifted binding to top level (except
              -- literal strings), so we don't float it at all.  It's a
              -- bit brutal, but unlifted bindings aren't expensive either
 
+  | JoinPoint join_arity <- idJoinPointHood bndr
+  , let (_, body) = collectNBinders join_arity deann_rhs
+  =  not (isTopLvl dest_lvl)
+  || (not is_bot && exprIsCheap body)
+
   | otherwise
   = False
+
 
 profitableFloat :: LevelEnv -> Level -> Bool
 profitableFloat env dest_lvl
