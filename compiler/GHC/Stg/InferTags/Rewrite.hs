@@ -368,7 +368,7 @@ rewriteRhs (_id, _tagSig) (StgRhsCon ccs con cn ticks args typ) = {-# SCC rewrit
             fvs <- fvArgs args
             -- lcls <- getFVs
             -- pprTraceM "RhsClosureConversion" (ppr (StgRhsClosure fvs ccs ReEntrant [] $! conExpr) $$ text "lcls:" <> ppr lcls)
-            return $! (StgRhsClosure fvs ccs ReEntrant [] $! conExpr) typ
+            return $! (StgRhsClosure fvs ccs Updatable [] $! conExpr) typ
 rewriteRhs _binding (StgRhsClosure fvs ccs flag args body typ) = do
     withBinders NotTopLevel args $
         withClosureLcls fvs $
