@@ -1256,8 +1256,7 @@ memInventory (bool show)
 #if defined(THREADED_RTS)
   // We need to be careful not to race with the nonmoving collector.
   // If a nonmoving collection is on-going we simply abort the inventory.
-  if (RtsFlags.GcFlags.useNonmoving){
-    if(TRY_ACQUIRE_LOCK(&nonmoving_collection_mutex))
+  if (RtsFlags.GcFlags.useNonmoving && !nonmovingBlockConcurrentMark(false)) {
       return;
   }
 #endif
@@ -1364,12 +1363,7 @@ memInventory (bool show)
   ASSERT(n_alloc_blocks == live_blocks);
   ASSERT(!leak);
 
-#if defined(THREADED_RTS)
-  if (RtsFlags.GcFlags.useNonmoving){
-    RELEASE_LOCK(&nonmoving_collection_mutex);
-  }
-#endif
-
+  nonmovingUnblockConcurrentMark();
 }
 
 
