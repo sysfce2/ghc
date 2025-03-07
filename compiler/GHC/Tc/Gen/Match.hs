@@ -543,9 +543,29 @@ tcGuardStmt _ stmt _ _
 --      potential for non-trivial coercions in tcMcStmt
 
 {-
-Note [Binding in list comprehension isn't linear]
+Note [List comprehension isn't linear]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In principle, [ y | () <- xs, y <- [0,1]] could be linear in `xs`.
+The usefulness of list comprehension in conjunction with linear types is dubious.
+After all, statements are made to be run many times, for instance in
+
+[u | y <- [0,1], stmts]
+
+both u and stmts are going to be run several times.
+
+In principle, though, there are some positions in a monad comprehension
+expressions which could be considered linear. We could try and make it so that
+these positions are considered linear by the typechecker, but in practice the
+desugarer doesn't take enough care to ensure that these are indeed desugared to
+linear sites. We tried in the past, and it turned out that we'd miss a
+desugaring corner case (#25772).
+
+Until there's a demand for this very specific improvement, let's instead be
+conservative, and consider list comprehension to be completely non-linear.
+
+Here are the case where list comprehension could be linear, together with the
+known challenges.
+
+(LCL1) [ y | () <- xs, y <- [0,1]] could be linear in `xs`.
 But, the way the desugaring works, we get something like
 
 case xs of
@@ -566,21 +586,31 @@ isn't linear in `xs` since the elements of `xs` are ignored. So we'd still have
 to call `tcScalingUsage` on `xs` in `tcLcStmt`, we'd just have to create a fresh
 multiplicity variable. We'd also use the same multiplicity variable in the call
 to `tcCheckPat` instead of `unrestricted`.
+
+(LCL2) [ y | b, y <- [0,1]] could be linear in `b`. This actually works fine
+with -O0 (as far as anybody knows), but -O and higher desugar list comprehension
+using the `build` combinator (this was the cause of #25772). But `build` isn't
+defined to be linear. The consequences of making `build` linear are
+unknown. It's not worth trying until a real need arises.
+
+(LCL3) [ x | ] could be linear in x. But it's unclear why anybody would want to
+write this instead of [ x ]. Besides, this syntax is currently rejected by the
+parser. The `build` obstacle of (LCL2) applies here too.
 -}
 
 tcLcStmt :: TyCon       -- The list type constructor ([])
          -> TcExprStmtChecker
 
 tcLcStmt _ _ (LastStmt x body noret _) elt_ty thing_inside
-  = do { body' <- tcMonoExprNC body elt_ty
+  = do { -- see (LCL3) in Note [List comprehension isn't linear]
+         body' <- tcScalingUsage ManyTy $ tcMonoExprNC body elt_ty
        ; thing <- thing_inside (panic "tcLcStmt: thing_inside")
        ; return (LastStmt x body' noret noSyntaxExpr, thing) }
 
 -- A generator, pat <- rhs
 tcLcStmt m_tc ctxt (BindStmt _ pat rhs) elt_ty thing_inside
  = do   { pat_ty <- newFlexiTyVarTy liftedTypeKind
-          -- About the next `tcScalingUsage ManyTy` and unrestricted
-          -- see Note [Binding in list comprehension isn't linear]
+          -- see (LCL1) in Note [List comprehension isn't linear]
         ; rhs'   <- tcScalingUsage ManyTy $ tcCheckMonoExpr rhs (mkTyConApp m_tc [pat_ty])
         ; (pat', thing)  <- tcCheckPat (StmtCtxt ctxt) pat (unrestricted pat_ty) $
                             tcScalingUsage ManyTy $
@@ -589,7 +619,9 @@ tcLcStmt m_tc ctxt (BindStmt _ pat rhs) elt_ty thing_inside
 
 -- A boolean guard
 tcLcStmt _ _ (BodyStmt _ rhs _ _) elt_ty thing_inside
-  = do  { rhs'  <- tcCheckMonoExpr rhs boolTy
+  = do  { -- Regarding the `tcScalingUsage ManyTy` on the `rhs`,
+          -- see (LCL2) in Note [List comprehension isn't linear]
+          rhs'  <- tcScalingUsage ManyTy $ tcCheckMonoExpr rhs boolTy
         ; thing <- tcScalingUsage ManyTy $ thing_inside elt_ty
         ; return (BodyStmt boolTy rhs' noSyntaxExpr noSyntaxExpr, thing) }
 

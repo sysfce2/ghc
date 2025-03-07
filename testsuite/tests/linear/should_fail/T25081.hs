@@ -22,10 +22,15 @@ guard_bind x = [ () | False, _ <- [x]]
 guard_guard :: a %1 -> (a %1 -> Bool) %1 -> [()]
 guard_guard x g = [ () | False, g x ]
 
--- This could, in principle, be linear. But see Note [Binding in list
+-- This could, in principle, be linear. But see (LCL1) in Note [List
 -- comprehension isn't linear] in GHC.Tc.Gen.Match.
 first_bind :: [()] %1 -> [Int]
 first_bind xs = [ y | () <- xs, y <- [0,1]]
+
+-- This could, in principle, be linear. But see (LCL2) in Note [List
+-- comprehension isn't linear] in GHC.Tc.Gen.Match.
+first_guard :: a %1 -> (a %1 -> Bool) %1 -> [Int]
+first_guard x g = [ y | g x, y <- [0,1] ]
 
 parallel :: a %1 -> [(a, Bool)]
 parallel x = [(y,z) | y <- [x] | z <- [True]]

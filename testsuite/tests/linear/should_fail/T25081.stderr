@@ -44,20 +44,32 @@ T25081.hs:28:12: error: [GHC-18872]
     • In an equation for ‘first_bind’:
           first_bind xs = [y | () <- xs, y <- [0, 1]]
 
-T25081.hs:31:10: error: [GHC-18872]
+T25081.hs:33:13: error: [GHC-18872]
+    • Couldn't match type ‘Many’ with ‘One’
+        arising from multiplicity of ‘x’
+    • In an equation for ‘first_guard’:
+          first_guard x g = [y | g x, y <- [0, 1]]
+
+T25081.hs:33:15: error: [GHC-18872]
+    • Couldn't match type ‘Many’ with ‘One’
+        arising from multiplicity of ‘g’
+    • In an equation for ‘first_guard’:
+          first_guard x g = [y | g x, y <- [0, 1]]
+
+T25081.hs:36:10: error: [GHC-18872]
     • Couldn't match type ‘Many’ with ‘One’
         arising from multiplicity of ‘x’
     • In an equation for ‘parallel’:
           parallel x = [(y, z) | y <- [x] |  z <- [True]]
 
-T25081.hs:34:16: error: [GHC-18872]
+T25081.hs:39:16: error: [GHC-18872]
     • Couldn't match type ‘Many’ with ‘One’
         arising from multiplicity of ‘x’
     • In an equation for ‘parallel_guard’:
           parallel_guard x g
             = [(y, z) | g x, y <- [0, 1] |  z <- [True, False]]
 
-T25081.hs:37:11: error: [GHC-18872]
+T25081.hs:42:11: error: [GHC-18872]
     • Couldn't match type ‘Many’ with ‘One’
         arising from multiplicity of ‘x’
     • In an equation for ‘transform’:
