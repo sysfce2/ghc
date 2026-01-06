@@ -75,7 +75,7 @@ import GHC.Generics (Generic, Generically(..))
 import Numeric (fromRat)
 import Data.Ratio
 import Data.List( find )
-import qualified Data.Map as FM
+import qualified Data.Set as Set
 import GHC.Real (Ratio(..))
 import qualified Data.Semigroup as S
 
@@ -388,7 +388,7 @@ data PmLitValue
   | PmLitOverString FastString
 
 -- | Syntactic equality.
--- We want (Ord PmLit) so that we can use (Map PmLit x) in `PmAltConSet`
+-- We want (Ord PmLit) so that we can use (Set PmLit) in `PmAltConSet`
 instance Eq PmLit where
   a == b = (a `compare` b) == EQ
 instance Ord PmLit where
@@ -510,34 +510,34 @@ data PmAltCon = PmAltConLike ConLike
               | PmAltLit     PmLit
 
 data PmAltConSet = PACS !(UniqDSet ConLike)
-                        !(FM.Map PmLit PmLit)
--- We use a (FM.Map PmLit PmLit) here, at the cost of requiring an Ord
+                        !(Set.Set PmLit)
+-- We use a (Data.Set.Set PmLit) here, at the cost of requiring an Ord
 -- instance for PmLit, because in extreme cases the set of PmLits can be
 -- very large.  See #26514.
 
 emptyPmAltConSet :: PmAltConSet
-emptyPmAltConSet = PACS emptyUniqDSet FM.empty
+emptyPmAltConSet = PACS emptyUniqDSet Set.empty
 
 isEmptyPmAltConSet :: PmAltConSet -> Bool
 isEmptyPmAltConSet (PACS cls lits)
-  = isEmptyUniqDSet cls && FM.null lits
+  = isEmptyUniqDSet cls && Set.null lits
 
 -- | Whether there is a 'PmAltCon' in the 'PmAltConSet' that compares 'Equal' to
 -- the given 'PmAltCon' according to 'eqPmAltCon'.
 elemPmAltConSet :: PmAltCon -> PmAltConSet -> Bool
 elemPmAltConSet (PmAltConLike cl) (PACS cls _   ) = elementOfUniqDSet cl cls
-elemPmAltConSet (PmAltLit lit)    (PACS _   lits) = isJust (FM.lookup lit lits)
+elemPmAltConSet (PmAltLit lit)    (PACS _   lits) = Set.member lit lits
 
 extendPmAltConSet :: PmAltConSet -> PmAltCon -> PmAltConSet
 extendPmAltConSet (PACS cls lits) (PmAltConLike cl)
   = PACS (addOneToUniqDSet cls cl) lits
 extendPmAltConSet (PACS cls lits) (PmAltLit lit)
-  = PACS cls (FM.insert lit lit lits)
+  = PACS cls (Set.insert lit lits)
 
 pmAltConSetElems :: PmAltConSet -> [PmAltCon]
 pmAltConSetElems (PACS cls lits)
   = map PmAltConLike (uniqDSetToList cls) ++
-    FM.foldr ((:) . PmAltLit) [] lits
+    map PmAltLit (Set.toList lits)
 
 instance Outputable PmAltConSet where
   ppr = ppr . pmAltConSetElems
