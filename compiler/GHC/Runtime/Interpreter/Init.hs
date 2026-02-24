@@ -49,6 +49,7 @@ data InterpOpts = InterpOpts
   , interpBrowser :: Bool
   , interpBrowserHost :: String
   , interpBrowserPort :: Int
+  , interpBrowserAssetsDir :: !(Maybe FilePath)
   , interpBrowserRedirectWasiConsole :: Bool
   , interpBrowserPuppeteerLaunchOpts :: Maybe String
   , interpBrowserPlaywrightBrowserType :: Maybe String
@@ -89,6 +90,7 @@ initInterpreter dflags tmpfs logger platform finder_cache unit_env opts = do
                 , wasmInterpBrowser = interpBrowser opts
                 , wasmInterpBrowserHost = interpBrowserHost opts
                 , wasmInterpBrowserPort = interpBrowserPort opts
+                , wasmInterpBrowserAssetsDir = interpBrowserAssetsDir opts
                 , wasmInterpBrowserRedirectWasiConsole = interpBrowserRedirectWasiConsole opts
                 , wasmInterpBrowserPuppeteerLaunchOpts = interpBrowserPuppeteerLaunchOpts opts
                 , wasmInterpBrowserPlaywrightBrowserType = interpBrowserPlaywrightBrowserType opts

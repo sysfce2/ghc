@@ -30,6 +30,7 @@ initInterpOpts dflags = do
     , interpBrowser = gopt Opt_GhciBrowser dflags
     , interpBrowserHost = ghciBrowserHost dflags
     , interpBrowserPort = ghciBrowserPort dflags
+    , interpBrowserAssetsDir = ghciBrowserAssetsDir dflags
     , interpBrowserRedirectWasiConsole = gopt Opt_GhciBrowserRedirectWasiConsole dflags
     , interpBrowserPuppeteerLaunchOpts = ghciBrowserPuppeteerLaunchOpts dflags
     , interpBrowserPlaywrightBrowserType = ghciBrowserPlaywrightBrowserType dflags
@@ -43,4 +44,3 @@ initInterpOpts dflags = do
     , interpCcConfig = configureCc dflags
     , interpExecutableLinkOpts = initExecutableLinkOpts dflags Dynamic
     }
-
