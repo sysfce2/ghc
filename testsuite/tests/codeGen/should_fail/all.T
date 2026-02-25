@@ -24,3 +24,4 @@ check_bounds_test('CheckBoundsCompareByteArray2') # Check first byte, 1st array
 check_bounds_test('CheckBoundsCompareByteArray3') # Check negative length
 check_bounds_test('CheckOverlapCopyByteArray')
 check_bounds_test('CheckOverlapCopyAddrToByteArray')
+check_bounds_test('T26958')
