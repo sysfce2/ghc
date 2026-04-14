@@ -14,6 +14,7 @@ module Hadrian.Utilities (
 
     -- * Paths
     BuildRoot (..), buildRoot, buildRootRules, isGeneratedSource,
+    KeepResponseFiles (..), keepResponseFiles, withResponseFile,
 
     -- * File system operations
     copyFile, copyFileUntracked, createFileLink, fixFile,
@@ -48,6 +49,7 @@ import Development.Shake hiding (Normal)
 import Development.Shake.Classes
 import Development.Shake.FilePath
 import System.Environment (lookupEnv)
+import System.IO (hClose, openTempFile)
 
 import qualified Data.ByteString        as BS
 import qualified Control.Exception.Base as IO
@@ -316,6 +318,29 @@ buildRootRules = do
 -- test is usually very fast.
 isGeneratedSource :: FilePath -> Action Bool
 isGeneratedSource file = buildRoot <&> (`isPrefixOf` file)
+
+newtype KeepResponseFiles = KeepResponseFiles Bool deriving (Eq, Show)
+
+-- | Whether to retain response files after the build action that created them
+-- completes. Mainly useful for debugging.
+keepResponseFiles :: Action Bool
+keepResponseFiles = do
+    KeepResponseFiles keep <- userSetting (KeepResponseFiles False)
+    return keep
+
+-- | Run an action with a response file path.
+--
+-- With @--keep-response-files@, the file is left on disk.
+withResponseFile :: (FilePath -> Action a) -> Action a
+withResponseFile action = do
+    keep <- keepResponseFiles
+    if keep
+        then do
+            (tmp, h) <- liftIO $ openTempFile "." "hadrian-rsp"
+            liftIO $ hClose h
+            putInfo $ "Keeping response file: " ++ tmp
+            action tmp
+        else withTempFile action
 
 -- | Link a file tracking the link target. Create the target directory if
 -- missing.

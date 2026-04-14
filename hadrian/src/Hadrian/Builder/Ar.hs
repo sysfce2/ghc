@@ -40,7 +40,7 @@ runAr :: FilePath    -- ^ path to @ar@
       -> [FilePath]  -- ^ input file paths
       -> [CmdOption] -- ^ Additional options
       -> Action ()
-runAr arPath flagArgs fileArgs buildOptions = withTempFile $ \tmp -> do
+runAr arPath flagArgs fileArgs buildOptions = withResponseFile $ \tmp -> do
     writeFile' tmp $ unwords fileArgs
     cmd [arPath] flagArgs ('@' : tmp) buildOptions
 

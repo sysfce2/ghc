@@ -389,15 +389,13 @@ runHaddock :: FilePath    -- ^ path to @haddock@
       -> [String]
       -> [FilePath]  -- ^ input file paths
       -> Action ()
-runHaddock haddockPath flagArgs fileInputs = withTempFile $ \tmp -> do
+runHaddock haddockPath flagArgs fileInputs = withResponseFile $ \tmp -> do
     writeFile' tmp $ escapeArgs fileInputs
     cmd [haddockPath] flagArgs ('@' : tmp)
 
 runGhcWithResponse :: FilePath -> [String] -> [FilePath] -> Action ()
-runGhcWithResponse ghcPath flagArgs fileInputs = withTempFile $ \tmp -> do
-
+runGhcWithResponse ghcPath flagArgs fileInputs = withResponseFile $ \tmp -> do
     writeFile' tmp $ escapeArgs fileInputs
-
     -- We can't put the flags in a response file, because some flags
     -- require empty arguments (such as the -dep-suffix flag), but
     -- that isn't supported yet due to #26560.
