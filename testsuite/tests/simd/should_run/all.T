@@ -80,7 +80,7 @@ test('simd002', [], compile_and_run, [''])
 test('simd003', [], compile_and_run, [''])
 test('simd004', [], compile_and_run, ['-O2'])
 test('simd005', [], compile_and_run, [''])
-test('simd006', [], compile_and_run, [''])
+test('simd006', [mini_quickcheck], multimod_compile_and_run, ['simd006', ''])
 test('simd007', [], compile_and_run, [''])
 test('simd008', [], compile_and_run, [''])
 test('simd009', [ req_th

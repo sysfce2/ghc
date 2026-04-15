@@ -3,8 +3,6 @@
 #	extra run flags
 #	expected process return value, if not zero
 
-import random
-
 # some bugs only surface with -O, omitting optasm may cause them to
 # slip into releases! (e.g. #26711)
 setTestOpts(when(have_ncg(), extra_ways(['optasm'])))
@@ -89,7 +87,14 @@ test('T20291', normal, compile_and_run, [''])
 test('T22282', normal, compile_and_run, [''])
 test('T22671', js_fragile(24259), compile_and_run, [''])
 # the high run timeout multiplier exists because of timeouts with the wasm backend
-test('foundation', [run_timeout_multiplier(4), js_fragile(24259), extra_ways(['optasm','ghci','ghci-opt']), extra_run_opts(str(random.getrandbits(64)))], compile_and_run, ['-fno-break-points'])
+test('foundation',
+     [ mini_quickcheck
+     , run_timeout_multiplier(4)
+     , js_fragile(24259)
+     , extra_ways(['optasm','ghci','ghci-opt'])
+     ]
+     , multimod_compile_and_run
+     , ['foundation', '-fno-break-points'])
 test('T24066', normal, compile_and_run, [''])
 test('div01', normal, compile_and_run, [''])
 test('T24245', normal, compile_and_run, [''])

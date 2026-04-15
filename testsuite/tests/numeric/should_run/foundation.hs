@@ -23,252 +23,20 @@ module Main
     ( main
     ) where
 
-import Data.Array.Byte
-import Data.Bits (Bits((.&.), bit), FiniteBits, finiteBitSize)
-import Data.Word
+import Data.Bits       (Bits((.&.), bit))
+import Data.Function   (on)
 import Data.Int
-import GHC.Natural
 import Data.Typeable
+import Data.Word
 import GHC.Int
-import GHC.Word
-import Data.Function
+import GHC.Natural
 import GHC.Prim
-import Control.Monad.Reader
-import Data.List (intercalate)
-import System.Environment (getArgs)
-import Text.Read (readMaybe)
-import Unsafe.Coerce
 import GHC.Types
-import Data.Char
-import System.Exit
-
+import GHC.Word
 import qualified GHC.Internal.PrimopWrappers as Wrapper
-import qualified GHC.Internal.Prim as Primop
+import qualified GHC.Internal.Prim           as Primop
 
-newtype Gen a = Gen { runGen :: (ReaderT LCGGen IO a) }
-  deriving newtype (Functor, Applicative, Monad)
-
-class Arbitrary a where
-  arbitrary :: Gen a
-
-class IsProperty p where
-    property :: p -> Property
-
-data PropertyCheck = PropertyBinaryOp Bool String String String
-                   | PropertyAnd PropertyCheck PropertyCheck
-
-instance IsProperty PropertyCheck where
-    property check = Prop $ pure (PropertyEOA check)
-
-data PropertyTestArg = PropertyEOA PropertyCheck
-                     | PropertyArg String PropertyTestArg
-
-getCheck :: PropertyTestArg -> ([String], PropertyCheck)
-getCheck (PropertyEOA pc) = ([], pc)
-getCheck (PropertyArg s pta ) = let (ss, pc) = getCheck pta in (s:ss, pc)
-
-data Property = Prop { unProp :: Gen PropertyTestArg }
-
-instance (Show a, Arbitrary a, IsProperty prop) => IsProperty (a -> prop) where
-    property p = forAll arbitrary p
-
--- | Running a generator for a specific type under a property
-forAll :: (Show a, IsProperty prop) => Gen a -> (a -> prop) -> Property
-forAll generator tst = Prop $ do
-    a <- generator
-    augment a <$> unProp (property (tst a))
-  where
-    augment a arg = PropertyArg (show a) arg
-
--- | A property that check for equality of its 2 members.
-propertyCompare :: (Show a) => String -> (a -> a -> Bool) -> a -> a -> PropertyCheck
-propertyCompare s f a b =
-    let sa = show a
-        sb = show b
-     in PropertyBinaryOp (a `f` b) s sa sb
-
-(===) :: (Show a, Eq a) => a -> a -> PropertyCheck
-(===) = propertyCompare "==" (==)
-infix 4 ===
-
-propertyAnd = PropertyAnd
-
-
-data Test where
-  Group :: String -> [Test] -> Test
-  Property :: IsProperty prop => String -> prop -> Test
-
-
-arbitraryInt64 :: Gen Int64
-arbitraryInt64 = Gen $ do
-    h <- ask
-    W64# w <- liftIO (randomWord64 h)
-    return (I64# (unsafeCoerce# w))
-
-integralDownsize :: (Integral a) => Int64 -> a
-integralDownsize = fromIntegral
-
-wordDownsize :: (Integral a) => Word64 -> a
-wordDownsize = fromIntegral
-
-arbitraryWord64 :: Gen Word64
-arbitraryWord64 = Gen $ do
-    h <- ask
-    liftIO (randomWord64 h)
-
-nonZero :: (Arbitrary a, Num a, Eq a) => Gen (NonZero a)
-nonZero = do
-  x <- arbitrary
-  if x == 0 then nonZero else pure $ NonZero x
-
-newtype NonZero a = NonZero { getNonZero :: a }
-  deriving (Eq,Ord,Bounded,Show)
-
-instance (Arbitrary a, Num a, Eq a) => Arbitrary (NonZero a) where
-  arbitrary = nonZero
-
--- | A newtype for shift amounts that are bounded by @wordSize - 1@
-newtype BoundedShiftAmount a = BoundedShiftAmount {getBoundedShiftAmount :: Int}
-  deriving (Eq, Ord, Show)
-
-instance (FiniteBits a) => Arbitrary (BoundedShiftAmount a) where
-  arbitrary = do
-    x <- arbitrary
-    let widthBits = finiteBitSize (undefined :: a)
-    pure $ BoundedShiftAmount (abs x `mod` widthBits)
-
-instance Arbitrary Natural where
-    arbitrary = integralDownsize . (`mod` 10000) . abs <$> arbitraryInt64
-
--- Bounded by Int64
-instance Arbitrary Integer where
-    arbitrary = fromIntegral <$> arbitraryInt64
-
-instance Arbitrary Int where
-    arbitrary = int64ToInt <$> arbitraryInt64
-instance Arbitrary Word where
-    arbitrary = word64ToWord <$> arbitraryWord64
-instance Arbitrary Word64 where
-    arbitrary = arbitraryWord64
-instance Arbitrary Word32 where
-    arbitrary = wordDownsize <$> arbitraryWord64
-instance Arbitrary Word16 where
-    arbitrary = wordDownsize <$> arbitraryWord64
-instance Arbitrary Word8 where
-    arbitrary = wordDownsize <$> arbitraryWord64
-instance Arbitrary Int64 where
-    arbitrary = arbitraryInt64
-instance Arbitrary Int32 where
-    arbitrary = integralDownsize <$> arbitraryInt64
-instance Arbitrary Int16 where
-    arbitrary = integralDownsize <$> arbitraryInt64
-instance Arbitrary Int8 where
-    arbitrary = integralDownsize <$> arbitraryInt64
-
-instance Arbitrary Char where
-    arbitrary = do
-      let high = fromIntegral $ fromEnum (maxBound :: Char) :: Word
-      (x::Word) <- arbitrary
-      let x' = mod x high
-      return (chr $ fromIntegral x')
-
-int64ToInt :: Int64 -> Int
-int64ToInt (I64# i) = I# (int64ToInt# i)
-
-
-word64ToWord :: Word64 -> Word
-word64ToWord (W64# i) = W# (word64ToWord# i)
-
-
-data RunS = RunS { depth :: Int, rg :: LCGGen, context :: [String] }
-
-newtype LCGGen = LCGGen { randomWord64 :: IO Word64 }
-
-data LCGParams = LCGParams { seed :: Word64, a :: Word64, c :: Word64, m :: Word64 }
-
-newLCGGen :: LCGParams -> IO LCGGen
-newLCGGen LCGParams {seed = W64# seed#, ..} = do
-  MutableByteArray mba# <- IO $ \s0 -> case newByteArray# 8# s0 of
-    (# s1, mba# #) -> case writeWord64Array# mba# 0# seed# s1 of
-      s2 -> (# s2, MutableByteArray mba# #)
-  pure $ LCGGen $ IO $ \s0 -> case readWord64Array# mba# 0# s0 of
-    (# s1, old_val# #) ->
-      let old_val = W64# old_val#
-          !new_val@(W64# new_val#) = (old_val * a + c) `mod` m
-       in case writeWord64Array# mba# 0# new_val# s1 of
-            s2 -> (# s2, new_val #)
-
-runPropertyCheck (PropertyBinaryOp res desc s1 s2) =
-  if res then return Success
-         else do
-          ctx <- context <$> ask
-          let msg = "Failure: " ++ s1 ++ desc ++ s2
-          putMsg msg
-          return (Failure [msg : ctx])
-runPropertyCheck (PropertyAnd a1 a2) = (<>) <$> runPropertyCheck a1 <*> runPropertyCheck a2
-
-runProperty :: Property -> ReaderT RunS IO Result
-runProperty (Prop p) = do
-  let iterations = 1000 :: Int
-  loop iterations iterations
-  where
-    loop iterations 0 = do
-      putMsg ("Passed " ++ show iterations ++ " iterations")
-      return Success
-    loop iterations n = do
-      h <- rg <$> ask
-      p <- liftIO (runReaderT (runGen p) h)
-      let (ss, pc) = getCheck p
-      res <- runPropertyCheck pc
-      case res of
-        Success -> loop iterations (n-1)
-        Failure msgs -> do
-          let msg = ("With arguments " ++ intercalate ", " ss)
-          putMsg msg
-          return (Failure (map (msg :) msgs))
-
-data Result = Success | Failure [[String]]
-
-instance Semigroup Result where
-  Success <> x = x
-  x <> Success = x
-  (Failure xs) <> (Failure ys) = Failure (xs ++ ys)
-
-instance Monoid Result where
-  mempty = Success
-
-putMsg s = do
-  n <- depth <$> ask
-  liftIO . putStrLn $ replicate (n * 2) ' ' ++ s
-
-
-nest c = local (\s -> s { depth = depth s + 1, context = c : context s })
-
-runTestInternal :: Test -> ReaderT RunS IO Result
-runTestInternal (Group name tests) = do
-  let label = ("Group " ++ name)
-  putMsg label
-  nest label (mconcat <$> mapM runTestInternal tests)
-runTestInternal (Property name p) = do
-  let label = ("Running " ++ name)
-  putMsg label
-  nest label $ runProperty (property p)
-
-
-runTests :: Word64 -> Test -> IO ()
-runTests seed t = do
-  -- These params are the same ones as glibc uses.
-  h <- newLCGGen (LCGParams { seed, m = 2 ^ (31 :: Int), a = 1103515245, c = 12345 })
-  res <- runReaderT  (runTestInternal t) (RunS 0 h [])
-  case res of
-    Success -> return ()
-    Failure tests -> do
-      putStrLn $ "Seed: " ++ show seed
-      putStrLn $ "These tests failed:  \n" ++ intercalate "  \n" (map (showStack 0 . reverse) tests)
-      exitFailure
-
-showStack _ [] = ""
-showStack n (s:ss) = replicate n ' ' ++ s ++ "\n" ++ showStack (n + 2) ss
+import MiniQuickCheck
 
 -------------------------------------------------------------------------------
 
@@ -325,8 +93,11 @@ testOperatorPrecedence _ = Group "Precedence"
     , Property "+ and * (2)" $ \(a :: a) (b :: a) (c :: a) -> (a * b + c) === ((a * b) + c)
     , Property "- and * (1)" $ \(a :: a) (b :: a) (c :: a) -> (a - b * c) === (a - (b * c))
     , Property "- and * (2)" $ \(a :: a) (b :: a) (c :: a) -> (a * b - c) === ((a * b) - c)
-    , Property "* and ^ (1)" $ \(a :: a) (b :: Natural) (c :: a) -> (a ^ b * c) === ((a ^ b) * c)
-    , Property "* and ^ (2)" $ \(a :: a) (c :: Natural) (b :: a) -> (a * b ^ c) === (a * (b ^ c))
+
+      -- Bound the exponent to avoid OOM errors e.g.
+      --   GNU MP: Cannot allocate memory (size=4294938656)
+    , Property "* and ^ (1)" $ \(a :: a) (BoundedBy b :: Natural `BoundedBy` 100) (c :: a) -> (a ^ b * c) === ((a ^ b) * c)
+    , Property "* and ^ (2)" $ \(a :: a) (BoundedBy c :: Natural `BoundedBy` 100) (b :: a) -> (a * b ^ c) === (a * (b ^ c))
     ]
 
 
@@ -454,19 +225,8 @@ instance TestPrimop LowerBitsAreDefined where
 twoNonZero :: (a -> a -> b) -> a -> NonZero a -> b
 twoNonZero f x (NonZero y) = f x y
 
-getSeedFromArgs :: IO Word64
-getSeedFromArgs = do
-  args <- getArgs
-  case args of
-    [arg] -> case readMaybe arg of
-      Just seed -> pure seed
-      Nothing -> die $ "Invalid seed (expected Word64): " ++ show arg
-    _ -> die "Usage: foundation <seed>"
-
 main :: IO ()
-main = do
-  seed <- getSeedFromArgs
-  runTests seed (Group "ALL" [testNumberRefs, testPrimops])
+main = runTestsMain (Iterations 1000) (Group "ALL" [testNumberRefs, testPrimops])
 
 -- Test an interpreted primop vs a compiled primop
 testPrimops = Group "primop"

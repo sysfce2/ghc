@@ -13,6 +13,7 @@ import time
 import datetime
 import copy
 import glob
+import random
 import sys
 from math import ceil, trunc, floor, log
 from pathlib import Path, PurePath
@@ -647,6 +648,11 @@ def extra_files(files):
 
 def _extra_files(name, opts, files):
     opts.extra_files.extend(files)
+
+def mini_quickcheck(name, opts):
+    miniqc = os.path.relpath(config.top / 'tests' / 'MiniQuickCheck.hs', opts.srcdir)
+    opts.extra_files.extend([miniqc])
+    opts.extra_run_opts += ' ' + str(random.getrandbits(64))
 
 # Record the size of a specific file
 def collect_size ( deviation, path ):
