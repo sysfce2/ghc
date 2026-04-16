@@ -49,6 +49,8 @@ test('int16x8_shuffle_baseline', [], compile_and_run, [''])
 test('int32x4_shuffle_baseline', [], compile_and_run, [''])
 test('int64x2_shuffle_baseline', [], compile_and_run, [''])
 
+test('T25030', [], makefile_test, [])
+
 test('T25658', [], compile_and_run, ['']) # #25658 is a bug with SSE2 code generation
 test('T25659', [], compile_and_run, [''])
 

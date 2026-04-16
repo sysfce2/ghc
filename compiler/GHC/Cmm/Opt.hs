@@ -24,6 +24,7 @@ import GHC.Platform
 import GHC.Types.Literal.Floating
 
 import Data.Maybe
+import Control.Monad (zipWithM, guard)
 import GHC.Float
 
 
@@ -47,7 +48,6 @@ cmmMachOpFold
     -> MachOp       -- The operation from an CmmMachOp
     -> [CmmExpr]    -- The optimized arguments
     -> CmmExpr
-
 cmmMachOpFold platform op args = fromMaybe (CmmMachOp op args) (cmmMachOpFoldM platform op args)
 
 -- Returns Nothing if no changes, useful for Hoopl, also reduces
@@ -65,6 +65,30 @@ cmmMachOpFoldM _ (MO_VF_Broadcast lg _w) exprs =
   case exprs of
     [CmmLit l] -> Just $! CmmLit (CmmVec $ replicate lg l)
     _ -> Nothing
+
+cmmMachOpFoldM plat (MO_V_Extract l _)  [v, (CmmLit (CmmInt idx W32))]
+  | idx >= 0, idx < fromIntegral l
+  = do
+    es <- vectorElements_maybe plat v
+    es !! fromInteger idx
+
+cmmMachOpFoldM plat (MO_VF_Extract l _) [v, (CmmLit (CmmInt idx W32))]
+  | idx >= 0, idx < fromIntegral l
+  = do
+    es <- vectorElements_maybe plat v
+    es !! fromInteger idx
+
+cmmMachOpFoldM plat op [v, newval@(CmmLit _), CmmLit (CmmInt idx W32)]
+  | MO_V_Insert  l _ <- op = foldToVecLit l
+  | MO_VF_Insert l _ <- op = foldToVecLit l
+  where foldToVecLit l = do
+          guard (idx >= 0 && idx < fromIntegral l)
+          ls <- vectorElements_maybe plat v
+          lits <- sequence $ map toLit_maybe (replaceAt (fromIntegral idx) (Just newval) ls)
+          Just $! CmmLit (CmmVec lits)
+        toLit_maybe (Just (CmmLit l)) = Just l
+        toLit_maybe _ = Nothing
+
 cmmMachOpFoldM _ op [CmmLit (CmmInt x rep)]
   | MO_WF_Bitcast width <- op = case width of
       W32 | res <- castWord32ToFloat (fromInteger x)
@@ -457,6 +481,64 @@ cmmMachOpFoldM platform mop [x, (CmmLit (CmmInt n _w))]
         x2 = if p == 1 then x1 else
              CmmMachOp (MO_And rep) [x1, CmmLit (CmmInt (n-1) rep)]
 
+-- Many vector MachOps are simply element-wise scalar MachOps. For these, we reduce
+-- to the scalar case using 'vectorMachOpScalarMachOp_maybe' and 'vectorElements_maybe'.
+
+-- Unary vector MachOps.
+cmmMachOpFoldM plat op [v]
+  | Just scalar_op <- vectorMachOpToScalarMachOp_maybe op
+  = do es <- vectorElements_maybe plat v
+       ls <- mapM (foldToLit plat scalar_op) es
+       Just $! CmmLit $ CmmVec ls
+
+  where foldToLit plat mop (Just a) = do
+          CmmLit l <- cmmMachOpFoldM plat mop [a]
+          return l
+        foldToLit _ _ _ = Nothing
+
+-- Binary vector MachOps.
+cmmMachOpFoldM plat op [v1, v2]
+  | Just scalar_op <- vectorMachOpToScalarMachOp_maybe op
+  = do
+      es1 <- vectorElements_maybe plat v1
+      es2 <- vectorElements_maybe plat v2
+      ls <- zipWithM (foldToLit plat scalar_op) es1 es2
+      Just $! CmmLit $ CmmVec ls
+  -- MIN/MAX don't have scalar equivalents, so handle them manually.
+  | MO_VS_Max _ w <- op = do
+      es1 <- vectorElements_maybe plat v1
+      es2 <- vectorElements_maybe plat v2
+      ls <- zipWithM (foldOp (narrowS w) max) es1 es2
+      Just $! CmmLit $ CmmVec ls
+  | MO_VU_Max _ w <- op = do
+      es1 <- vectorElements_maybe plat v1
+      es2 <- vectorElements_maybe plat v2
+      ls <- zipWithM (foldOp (narrowU w) max) es1 es2
+      Just $! CmmLit $ CmmVec ls
+  | MO_VS_Min _ w <- op = do
+      es1 <- vectorElements_maybe plat v1
+      es2 <- vectorElements_maybe plat v2
+      ls <- zipWithM (foldOp (narrowS w) min) es1 es2
+      Just $! CmmLit $ CmmVec ls
+  | MO_VU_Min _ w <- op = do
+      es1 <- vectorElements_maybe plat v1
+      es2 <- vectorElements_maybe plat v2
+      ls <- zipWithM (foldOp (narrowU w) min) es1 es2
+      Just $! CmmLit $ CmmVec ls
+
+  where
+    foldToLit plat mop (Just a1) (Just a2) = do
+      CmmLit l <- cmmMachOpFoldM plat mop [a1, a2]
+      return l
+    foldToLit _ _ _ _  = Nothing
+
+    foldOp do_narrow op
+      (Just (CmmLit (CmmInt x rep)))
+      (Just (CmmLit (CmmInt y _)))
+        = Just $! CmmInt (do_narrow x `op` do_narrow y) rep
+    foldOp _ _ _ _ = Nothing
+
+
 -- ToDo (#7116): optimise floating-point multiplication, e.g. x*2.0 -> x+x
 -- Unfortunately this needs a unique supply because x might not be a
 -- register.  See #2253 (program 6) for an example.
@@ -471,6 +553,59 @@ cmmMachOpFoldM _ _ _ = Nothing
 -- literal offsets). See #24893
 validOffsetRep :: Width -> Bool
 validOffsetRep rep = widthInBits rep <= finiteBitSize (undefined :: Int)
+
+
+-- Is this a vector 'MachOp' that is an element-wise lift of
+-- a scalar 'MachOp'? If so, returns the corresponding scalar 'MachOp'.
+vectorMachOpToScalarMachOp_maybe :: MachOp -> Maybe MachOp
+vectorMachOpToScalarMachOp_maybe m = case m of
+  MO_VS_Neg _ w -> Just $ MO_S_Neg w
+  MO_VF_Neg _ w -> Just $ MO_F_Neg w
+  MO_V_Add  _ w -> Just $ MO_Add w
+  MO_V_Sub  _ w -> Just $ MO_Sub w
+  MO_V_Mul  _ w -> Just $ MO_Mul w
+  MO_VF_Add _ w -> Just $ MO_F_Add w
+  MO_VF_Sub _ w -> Just $ MO_F_Sub w
+  MO_VF_Mul _ w -> Just $ MO_F_Mul w
+  MO_VF_Min _ w -> Just $ MO_F_Min w
+  MO_VF_Max _ w -> Just $ MO_F_Max w
+  MO_V_And  _ w -> Just $ MO_And w
+  MO_V_Or   _ w -> Just $ MO_Or w
+  MO_V_Xor  _ w -> Just $ MO_Xor w
+  _ -> Nothing
+
+
+-- | Helper function that tells us what we know about the elements of a vector.
+--
+-- Returns 'Nothing' for non-vectors, and @[Nothing, Nothing, ...]@ for vectors
+-- with unknown elements.
+vectorElements_maybe :: Platform -> CmmExpr -> Maybe [Maybe CmmExpr]
+vectorElements_maybe _plat (CmmLit (CmmVec es)) = Just $! map (Just . CmmLit) es
+
+vectorElements_maybe _plat (CmmMachOp (MO_V_Broadcast l _) args)
+  | [CmmLit v] <- args = Just $! replicate l (Just $! CmmLit v)
+vectorElements_maybe _plat (CmmMachOp (MO_VF_Broadcast l _) args)
+  | [CmmLit v] <- args = Just $! replicate l (Just $! CmmLit v)
+
+vectorElements_maybe plat (CmmMachOp (MO_V_Insert _ _) args)
+  | [v, e, (CmmLit (CmmInt i _w))] <- args
+  , Just es <- vectorElements_maybe plat v
+      = Just $! (replaceAt (fromInteger i) (Just $! e) es)
+
+vectorElements_maybe plat (CmmMachOp (MO_VF_Insert _ _) args)
+  | [v, e, (CmmLit (CmmInt i _w))] <- args
+  , Just es <- vectorElements_maybe plat v
+    = Just $! (replaceAt (fromInteger i) (Just $! e) es)
+
+vectorElements_maybe plat (CmmMachOp mop _)
+  | isVecType result_type = Just $! replicate (vecLength result_type) Nothing
+  where result_type = machOpResultType plat mop []
+
+vectorElements_maybe _plat (CmmReg reg)
+  | isVecType reg_type = Just $! replicate (vecLength reg_type) Nothing
+  where reg_type = cmmRegType reg
+
+vectorElements_maybe _ _ = Nothing
 
 
 {- Note [Comparison operators]

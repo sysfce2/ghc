@@ -56,7 +56,7 @@ module GHC.Utils.Misc (
 
         -- * List operations controlled by another list
         takeList, dropList, splitAtList, split,
-        dropTail, capitalise,
+        replaceAt, dropTail, capitalise,
 
         -- * Sorting
         sortWith, minWith, nubSort, ordNub, ordNubOn,
@@ -717,6 +717,14 @@ splitAtList xs ys = go 0# xs ys
       go _  !_     []     = (ys, [])             -- length ys <= length xs
       go n  []     bs     = (take (I# n) ys, bs) -- = splitAt n ys
       go n  (_:as) (_:bs) = go (n +# 1#) as bs
+
+-- | given an index n and element y, replace the nth element of list xs with y
+replaceAt :: Int -> a -> [a] -> [a]
+replaceAt n y xs
+  | n >= length xs = xs
+  | n < 0 = xs
+  | otherwise = before ++ (y : drop 1 after)
+      where (before, after) = splitAt n xs
 
 -- | drop from the end of a list
 dropTail :: Int -> [a] -> [a]

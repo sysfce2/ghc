@@ -1,0 +1,14 @@
+section: codegen
+synopsis: Implement Cmm constant folding for some SIMD vector instructions
+issues: #25030 #26915
+mrs: !15512
+
+description: {
+The Cmm constant folding pass now handles the following vector operations:
+
+- insert and extract (broadcast was already supported)
+- integer arithmetic operations: negation, addition, subtraction, multiplication,
+  minimum, maximum
+- logical operations: and, or, xor
+}
+
