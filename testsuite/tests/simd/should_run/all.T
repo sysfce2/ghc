@@ -49,7 +49,7 @@ test('int16x8_shuffle_baseline', [], compile_and_run, [''])
 test('int32x4_shuffle_baseline', [], compile_and_run, [''])
 test('int64x2_shuffle_baseline', [], compile_and_run, [''])
 
-test('T25030', [], makefile_test, [])
+test('T25030', [when(arch('i386'), expect_broken_for(25498, ['optllvm']))], makefile_test, [])
 
 test('T25658', [], compile_and_run, ['']) # #25658 is a bug with SSE2 code generation
 test('T25659', [], compile_and_run, [''])
@@ -85,6 +85,7 @@ test('simd007', [], compile_and_run, [''])
 test('simd008', [], compile_and_run, [''])
 test('simd009', [ req_th
                 , extra_files(['Simd009b.hs', 'Simd009c.hs'])
+                , when(arch('i386'), expect_broken_for(25498, ['optllvm']))
                 ]
               , multimod_compile_and_run, ['simd009', ''])
 test('simd010', [], compile_and_run, [''])
@@ -176,7 +177,7 @@ test('T25062_V64'
     , compile_and_run if have_cpu_feature('avx512f') else compile
     , [''])
 
-test('T25169', [], compile_and_run, [''])
+test('T25169', [when(arch('i386'), expect_broken_for(25498, ['optllvm']))], compile_and_run, [''])
 test('T25455', [], compile_and_run, [''])
 test('T25486', [], compile_and_run, [''])
 
