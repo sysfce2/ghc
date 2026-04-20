@@ -39,7 +39,9 @@ if %CABMAJOR% lss 3 (
     exit /B 2
 )
 
-for /F "tokens=*" %%a in ('"%CABAL%" --with-compiler=%GHC% path --output-format=key-value 2^>NUL ^| findstr /B "remote-repo-cache:"') do set REMOTE_REPO_CACHE=%%a
+"%CABAL%" --with-compiler=%GHC% path --output-format=key-value > "%TEMP%\ghc_cabal_path.txt" 2>NUL
+for /F "tokens=*" %%a in ('findstr /B "remote-repo-cache:" "%TEMP%\ghc_cabal_path.txt"') do set REMOTE_REPO_CACHE=%%a
+del "%TEMP%\ghc_cabal_path.txt" 2>NUL
 set REMOTE_REPO_CACHE=%REMOTE_REPO_CACHE:remote-repo-cache: =%
 if not exist "%REMOTE_REPO_CACHE%\hackage.haskell.org" (
     echo Please run 'cabal update' first
