@@ -77,12 +77,41 @@ testMultiplicative _ = Group "Multiplicative"
     , Property "a * b == Integer(a) * Integer(b)" $ \(a :: a) (b :: a) -> a * b === fromInteger (toInteger a * toInteger b)
     ]
 
-testDividible :: forall a . (Show a, Eq a, Integral a, Num a, Arbitrary a, Typeable a)
+-- | Divisibility test for Bounded Integral types (Int, Int{8,16,32,64},
+-- Word, Word{8,16,32,64}).
+testDivisible :: forall a . (Show a, Eq a, Bounded a, Integral a, Num a, Arbitrary a, Typeable a)
               => Proxy a -> Test
-testDividible _ = Group "Divisible"
+testDivisible _ = Group "Divisible"
+    [ Property "(x `div` y) * y + (x `mod` y) == x" $ \(a :: a) (NonZero b) ->
+            -- See Note [Skipping minBound `div` (-1)].
+            if (minBound :: a) < 0 && a == minBound && b == (-1)
+              then True === True
+              else a === (a `div` b) * b + (a `mod` b)
+    ]
+
+-- | Divisibility test for unbounded Integral types (Integer). No overflow
+-- can occur here, so the property holds without exception for all NonZero b.
+testDivisibleUnbounded :: forall a . (Show a, Eq a, Integral a, Num a, Arbitrary a, Typeable a)
+                       => Proxy a -> Test
+testDivisibleUnbounded _ = Group "Divisible"
     [ Property "(x `div` y) * y + (x `mod` y) == x" $ \(a :: a) (NonZero b) ->
             a === (a `div` b) * b + (a `mod` b)
     ]
+
+-- Note [Skipping minBound `div` (-1)]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- For a fixed-width *signed* Integral type, `minBound `div` (-1)` raises
+-- ArithException(Overflow) because `-minBound` is not representable in the
+-- type (e.g., for Int8, `-(-128)` would be 128, out of range). The div/mod
+-- identity property cannot hold there, so we skip exactly that one pair.
+--
+-- We detect "signed Bounded" with `(minBound :: a) < 0`: True for Int{N},
+-- False for Word{N}. This way unsigned Bounded types lose no coverage,
+-- and only the genuine overflow sample is skipped for signed types.
+--
+-- For the unbounded `Integer`, no overflow can occur and we use a separate
+-- 'testDivisibleUnbounded' (without the Bounded constraint or the skip).
+-- See #27222.
 
 testOperatorPrecedence :: forall a . (Show a, Eq a, Prelude.Num a, Integral a, Num a,  Arbitrary a, Typeable a)
                        => Proxy a -> Test
@@ -101,14 +130,26 @@ testOperatorPrecedence _ = Group "Precedence"
     ]
 
 
-testNumber :: (Show a, Eq a, Prelude.Num a, Integral a, Num a, Arbitrary a, Typeable a)
+testNumber :: (Show a, Eq a, Prelude.Num a, Bounded a, Integral a, Num a, Arbitrary a, Typeable a)
            => String -> Proxy a -> Test
 testNumber name proxy = Group name
     [ testIntegral proxy
     , testEqOrd proxy
     , testAdditive proxy
     , testMultiplicative proxy
-    , testDividible proxy
+    , testDivisible proxy
+    , testOperatorPrecedence proxy
+    ]
+
+-- | Variant of 'testNumber' for unbounded Integral types (e.g., Integer).
+testNumberUnbounded :: (Show a, Eq a, Prelude.Num a, Integral a, Num a, Arbitrary a, Typeable a)
+                    => String -> Proxy a -> Test
+testNumberUnbounded name proxy = Group name
+    [ testIntegral proxy
+    , testEqOrd proxy
+    , testAdditive proxy
+    , testMultiplicative proxy
+    , testDivisibleUnbounded proxy
     , testOperatorPrecedence proxy
     ]
 
@@ -119,7 +160,7 @@ testNumberRefs = Group "ALL"
     , testNumber "Int16" (Proxy :: Proxy Int16)
     , testNumber "Int32" (Proxy :: Proxy Int32)
     , testNumber "Int64" (Proxy :: Proxy Int64)
-    , testNumber "Integer" (Proxy :: Proxy Integer)
+    , testNumberUnbounded "Integer" (Proxy :: Proxy Integer)
     , testNumber "Word" (Proxy :: Proxy Word)
     , testNumber "Word8" (Proxy :: Proxy Word8)
     , testNumber "Word16" (Proxy :: Proxy Word16)
@@ -399,7 +440,7 @@ testPrimops = Group "primop"
   , testPrimop "-#" (Primop.-#) (Wrapper.-#)
   , testPrimop "*#" (Primop.*#) (Wrapper.*#)
   , testPrimop "timesInt2#" Primop.timesInt2# Wrapper.timesInt2#
-  , testPrimop "mulIntMayOflo#" Primop.mulIntMayOflo# Wrapper.mulIntMayOflo#
+  , testPrimopMayOflo "mulIntMayOflo#" Primop.mulIntMayOflo# Wrapper.mulIntMayOflo#
   , testPrimopDivLike "quotInt#" Primop.quotInt# Wrapper.quotInt#
   , testPrimopDivLike "remInt#" Primop.remInt# Wrapper.remInt#
   , testPrimopDivLike "quotRemInt#" Primop.quotRemInt# Wrapper.quotRemInt#
@@ -496,6 +537,31 @@ instance TestPrimop (Int# -> Int# -> Int#) where
   testPrimop s l r = Property s $ \ (uInt#-> x0) (uInt#-> x1) -> wInt# (l x0 x1) === wInt# (r x0 x1)
   testPrimopDivLike s l r = Property s $ twoNonZero $ \ (uInt#-> x0) (uInt#-> x1) -> wInt# (l x0 x1) === wInt# (r x0 x1)
   testPrimopShift s l r = Property s $ \ (uInt#-> x0) (BoundedShiftAmount @Int shift) -> wInt# (l x0 (uInt# shift)) === wInt# (r x0 (uInt# shift))
+
+-- | Compare two 'mulIntMayOflo#'-like primops only on whether their result
+-- is zero. See Note [Comparing mulIntMayOflo# results].
+testPrimopMayOflo :: String
+                  -> (Int# -> Int# -> Int#)
+                  -> (Int# -> Int# -> Int#)
+                  -> Test
+testPrimopMayOflo s l r =
+    Property s $ \ (uInt# -> x0) (uInt# -> x1) ->
+        (wInt# (l x0 x1) == 0) === (wInt# (r x0 x1) == 0)
+
+-- Note [Comparing mulIntMayOflo# results]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- The 'mulIntMayOflo#' primop is only specified to return 0 if the signed
+-- multiplication does not overflow, and a non-zero value if it /may/
+-- overflow (see Note [MO_S_MulMayOflo significant width] in
+-- GHC.Cmm.MachOp). The exact non-zero value is unspecified and legitimately
+-- differs between backends and between inlined vs. non-inlined call sites
+-- (e.g., the LLVM backend's `isSMulOK` returns `sext_signbit(low) - high`,
+-- which is some arbitrary non-zero word on overflow).
+--
+-- Comparing the raw Int# results bit-for-bit is therefore too strict and
+-- causes spurious test failures whenever the random arguments happen to
+-- overflow. We compare zero/non-zero instead, which matches the spec.
+-- See #27222.
 
 instance TestPrimop (Int# -> Int# -> (# Int#,Int# #)) where
   testPrimop s l r = Property s $ \ (uInt#-> x0) (uInt#-> x1) -> WTUP2(wInt#,wInt#, (l x0 x1)) === WTUP2(wInt#,wInt#, (r x0 x1))
