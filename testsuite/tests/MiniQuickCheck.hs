@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 
 -- | A minimal QuickCheck-like property testing framework for use in the GHC
@@ -52,6 +53,8 @@ module MiniQuickCheck
   ) where
 
 -- base
+import Control.Exception
+  ( SomeException, displayException, evaluate, try )
 import Control.Monad.IO.Class
   ( liftIO )
 import Data.Bits
@@ -181,16 +184,39 @@ nest :: String -> ReaderT RunS IO a -> ReaderT RunS IO a
 nest c = local (\s -> s { depth = depth s + 1, context = c : context s })
 
 runPropertyCheck :: PropertyCheck -> ReaderT RunS IO Result
-runPropertyCheck (PropertyBinaryOp ok desc s1 s2) =
-  if ok
-    then return Success
-    else do
-      ctx <- context <$> ask
-      let msg = "Failure: " ++ s1 ++ " " ++ desc ++ " " ++ s2
-      putMsg msg
-      return (Failure [msg : ctx])
-runPropertyCheck (PropertyAnd a b) =
-  (<>) <$> runPropertyCheck a <*> runPropertyCheck b
+runPropertyCheck pcThunk = do
+  -- See Note [Catching exceptions in property evaluation].
+  pcRes <- liftIO $ try @SomeException (evaluate pcThunk)
+  case pcRes of
+    Left  e -> reportFailure ("Failure: exception: " ++ displayException e)
+    Right (PropertyAnd a b) ->
+      (<>) <$> runPropertyCheck a <*> runPropertyCheck b
+    Right (PropertyBinaryOp ok desc s1 s2) -> do
+      okRes <- liftIO $ try @SomeException (evaluate ok)
+      case okRes of
+        Right True  -> return Success
+        Right False -> reportFailure ("Failure: " ++ s1 ++ " " ++ desc ++ " " ++ s2)
+        Left  e     -> reportFailure ("Failure: exception: " ++ displayException e)
+
+reportFailure :: String -> ReaderT RunS IO Result
+reportFailure msg = do
+  ctx <- context <$> ask
+  putMsg msg
+  return (Failure [msg : ctx])
+
+-- Note [Catching exceptions in property evaluation]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- A property like `\a b -> let !r = a `div` 0 in r === b` builds a
+-- `PropertyCheck` thunk whose forcing raises an exception -- in this case
+-- already at the `PropertyBinaryOp` constructor, before its `ok` field is
+-- ever inspected. Other properties may force `ok = (s1 == s2)` instead and
+-- raise from there.
+--
+-- To handle both, we `evaluate` first the `PropertyCheck` thunk and then
+-- the `ok` field, each inside `try`, and report any exception through the
+-- normal `reportFailure` path. The surrounding loop then still prints
+-- "With arguments ... (Seed: ...)" and the test driver continues with
+-- subsequent properties instead of aborting.
 
 runProperty :: Iterations -> Property -> ReaderT RunS IO Result
 runProperty (Iterations iters) (Prop p) = do
