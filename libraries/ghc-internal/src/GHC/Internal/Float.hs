@@ -480,6 +480,12 @@ instance  Real Float  where
             | otherwise                                         ->
                     IS m# :% integerShiftL# 1 (int2Word# (negateInt# e#))
 
+-- | @since base-4.24
+--
+instance  Bounded Float  where
+    minBound = negate (1/0)
+    maxBound = 1/0
+
 -- | @since base-2.01
 --
 -- This instance implements IEEE 754 standard with all its usual pitfalls
@@ -736,6 +742,12 @@ instance  Real Double  where
                     (# n, d# #) ->  n :% integerShiftL# 1 (int2Word# d#)
             | otherwise                                            ->
                 m :% integerShiftL# 1 (int2Word# (negateInt# e#))
+
+-- | @since base-4.24
+--
+instance  Bounded Double  where
+    minBound = negate (1/0)
+    maxBound = 1/0
 
 -- | @since base-2.01
 --

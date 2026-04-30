@@ -1,5 +1,8 @@
 # Changelog for [`base` package](http://hackage.haskell.org/package/base)
 
+## 4.24.0.0 *TBA*
+  * Add `Bounded` instances for `Double`, `Float`, `CDouble` and `CFloat`. ([CLC proposal #402](https://github.com/haskell/core-libraries-committee/issues/402))
+
 ## 4.23.0.0 *TBA*
   * Add `System.IO.hGetNewlineMode`. ([CLC proposal #370](https://github.com/haskell/core-libraries-committee/issues/370))
   * Add `{-# WARNING in "x-partial" #-}` to `Data.List.{init,last}`.
