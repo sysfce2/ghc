@@ -1,6 +1,6 @@
 # Interface stability testing
 
-The tests in this directory verify that the interfaces of exposed by GHC's
+The tests in this directory verify that the interfaces exposed by GHC's
 core libraries do not inadvertently change. They use the `utils/dump-decls`
 utility to dump all exported declarations of all exposed modules for the
 following packages:
@@ -27,7 +27,9 @@ The `base-exports` test in particular has rather platform-dependent output.
 Consequently, updating its output can be a bit tricky. There are two ways by
 which one can do this:
 
- * Extrapolation: The various platforms' `base-exports.stdout` files are
+#### Extrapolation
+
+The various platforms' `base-exports.stdout` files are
    similar enough that one can often apply the same patch of one file to the
    others.  For instance:
    ```
@@ -40,8 +42,44 @@ which one can do this:
    In the case of conflicts, increasing the fuzz factor (using `-F`) can be
    quite effective.
 
- * Using CI: Each CI job produces a tarball, `unexpected-test-output.tar.gz`,
+#### Using CI
+
+Each CI job produces a tarball, `unexpected-test-output.tar.gz`,
    which contains the output produced by the job's failing tests. Simply
-   download this tarball and extracting the appropriate `base-exports.stdout-*`
+   download this tarball and extract the appropriate `base-exports.stdout-*`
    files into this directory.
 
+Doing this by hand is of course very annoying. To make things faster, use the script in this folder called `download.base-exports.sh` :
+
+* Running for the first time
+    1. Find the URL for downloading unexpected-test-output.tar.gz. To do so
+        * Go to the CI job page you want to download
+        * Click on "Browse"
+        * Find unexpected-test-output.tar.gz
+        * Right-click the download link then "Copy link" (Firefox)
+    2. The URL should look like this :
+        `https://gitlab.haskell.org/ghc/ghc/-/jobs/2503744/artifacts/file/unexpected-test-output.tar.gz`
+        * the prefix is   : `https://gitlab.haskell.org/ghc/ghc/-/jobs/`
+        * the job ID is   : `2503744`
+        * and the suffix  : `/artifacts/file/unexpected-test-output.tar.gz`
+    3. The script prompts you with URL prefix and suffix.
+    4. It will save a file to remember this, so you only need to do this once.
+    5. If you need to change the URL, just edit the file `download-base-exports/url-unexpected-test-output` directly.
+
+* Downloading the artifacts
+    1. Find all the job IDs you want to download. For this, just go to the jobs
+       page `https://gitlab.haskell.org/<YOUR-FORK>/ghc/-/jobs`
+    2. Make sure you get all the artifacts. You need 3 of them.
+       To get all 3 CI jobs, the label `javascript` must be on the MR.
+       If you don't have the rights for adding these labels, ask.
+          1. The `x86` CI job for darwin or linux : `base-exports.stdout`
+          2. The `windows` job : `base-exports.stdout-mingw32`
+          3. The `javascript` CI job :
+                          `base-exports.stdout-javascript-unknown-ghcjs`
+    3. Run the script with all the job IDs :
+       `./download-base-exports.sh 2502789 2502792 2502793`
+
+       Using a range downloads more artifacts than necessary, but is a
+       no-brainer:
+
+       `./download-base-exports.sh {2502789..2502795}`
